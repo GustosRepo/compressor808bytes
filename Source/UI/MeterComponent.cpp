@@ -51,7 +51,8 @@ void MeterComponent::paint(juce::Graphics& graphics)
         const auto bounds = getLocalBounds().toFloat().reduced(4.0f);
         const auto reductionDb = juce::jlimit(0.0f, meterRangeDb, source.load(std::memory_order_relaxed));
         const auto bezel = bounds.reduced(2.0f);
-        const auto face = bezel.reduced(30.0f, 28.0f).withTrimmedBottom(8.0f);
+        const auto scale = juce::jlimit(0.62f, 1.0f, std::min(bounds.getWidth() / 330.0f, bounds.getHeight() / 160.0f));
+        const auto face = bezel.reduced(30.0f * scale, 28.0f * scale).withTrimmedBottom(8.0f * scale);
         graphics.setColour(juce::Colour::fromRGB(5, 5, 5).withAlpha(0.45f));
         graphics.fillRoundedRectangle(bounds.translated(3.0f, 5.0f), 8.0f);
         graphics.setColour(juce::Colour::fromRGB(18, 18, 16));
@@ -59,15 +60,15 @@ void MeterComponent::paint(juce::Graphics& graphics)
         graphics.setColour(juce::Colour::fromRGB(70, 62, 50));
         graphics.drawRoundedRectangle(bezel, 8.0f, 1.4f);
 
-        for (auto point : { bezel.getTopLeft() + juce::Point<float>(17.0f, 17.0f),
-                            bezel.getTopRight() + juce::Point<float>(-17.0f, 17.0f),
-                            bezel.getBottomLeft() + juce::Point<float>(17.0f, -17.0f),
-                            bezel.getBottomRight() + juce::Point<float>(-17.0f, -17.0f) })
+        for (auto point : { bezel.getTopLeft() + juce::Point<float>(17.0f * scale, 17.0f * scale),
+                            bezel.getTopRight() + juce::Point<float>(-17.0f * scale, 17.0f * scale),
+                            bezel.getBottomLeft() + juce::Point<float>(17.0f * scale, -17.0f * scale),
+                            bezel.getBottomRight() + juce::Point<float>(-17.0f * scale, -17.0f * scale) })
         {
             graphics.setColour(juce::Colour::fromRGB(7, 7, 6));
-            graphics.fillEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre(point));
+            graphics.fillEllipse(juce::Rectangle<float>(9.0f * scale, 9.0f * scale).withCentre(point));
             graphics.setColour(juce::Colour::fromRGB(74, 62, 43));
-            graphics.drawEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre(point), 1.0f);
+            graphics.drawEllipse(juce::Rectangle<float>(9.0f * scale, 9.0f * scale).withCentre(point), 1.0f);
         }
 
         graphics.setColour(juce::Colour::fromRGB(202, 157, 78));
@@ -84,7 +85,7 @@ void MeterComponent::paint(juce::Graphics& graphics)
         graphics.setColour(juce::Colour::fromRGB(64, 42, 25));
         graphics.drawRoundedRectangle(face, 5.0f, 1.5f);
 
-        const auto rail = face.reduced(42.0f, 0.0f);
+        const auto rail = face.reduced(42.0f * scale, 0.0f);
         const auto trackY = face.getY() + face.getHeight() * 0.42f;
         const auto needleX = reductionToX(reductionDb, rail);
 
@@ -96,16 +97,16 @@ void MeterComponent::paint(juce::Graphics& graphics)
         for (const auto mark : reductionMarks)
         {
             const auto tickX = reductionToX(mark.valueDb, rail);
-            const auto tickHeight = mark.valueDb == 0.0f || std::abs(mark.valueDb) == 20.0f ? 30.0f : 20.0f;
+            const auto tickHeight = (mark.valueDb == 0.0f || std::abs(mark.valueDb) == 20.0f ? 30.0f : 20.0f) * scale;
             graphics.setColour(juce::Colour::fromRGB(49, 35, 23));
             graphics.drawLine(tickX, trackY - tickHeight * 0.5f, tickX, trackY + tickHeight * 0.5f, mark.valueDb == 0.0f ? 2.2f : 1.2f);
         }
 
-        graphics.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
+        graphics.setFont(juce::FontOptions(12.0f * scale).withStyle("Bold"));
         for (const auto mark : labelledReductionMarks)
         {
             const auto markX = reductionToX(mark.valueDb, rail);
-            const auto tickHeight = mark.valueDb == 0.0f ? 34.0f : 28.0f;
+            const auto tickHeight = (mark.valueDb == 0.0f ? 34.0f : 28.0f) * scale;
             graphics.setColour(juce::Colour::fromRGB(35, 25, 16));
             graphics.drawLine(markX, trackY - tickHeight * 0.5f, markX, trackY + tickHeight * 0.5f, 2.2f);
         }
@@ -115,23 +116,23 @@ void MeterComponent::paint(juce::Graphics& graphics)
             const auto markX = reductionToX(mark.valueDb, rail);
             graphics.setColour(juce::Colour::fromRGB(35, 25, 16));
             const auto label = juce::String(juce::roundToInt(mark.valueDb));
-            graphics.drawText(label, juce::Rectangle<float>(markX - 20.0f, trackY - 34.0f, 40.0f, 16.0f), juce::Justification::centred);
+            graphics.drawText(label, juce::Rectangle<float>(markX - 20.0f * scale, trackY - 34.0f * scale, 40.0f * scale, 16.0f * scale), juce::Justification::centred);
         }
 
         juce::Path pointer;
-        pointer.addTriangle(needleX - 6.0f, trackY - 22.0f, needleX + 6.0f, trackY - 22.0f, needleX, trackY - 11.0f);
-        pointer.addTriangle(needleX - 6.0f, trackY + 22.0f, needleX + 6.0f, trackY + 22.0f, needleX, trackY + 11.0f);
+        pointer.addTriangle(needleX - 6.0f * scale, trackY - 22.0f * scale, needleX + 6.0f * scale, trackY - 22.0f * scale, needleX, trackY - 11.0f * scale);
+        pointer.addTriangle(needleX - 6.0f * scale, trackY + 22.0f * scale, needleX + 6.0f * scale, trackY + 22.0f * scale, needleX, trackY + 11.0f * scale);
         graphics.setColour(juce::Colour::fromRGB(40, 20, 14).withAlpha(0.35f));
-        graphics.strokePath(pointer, juce::PathStrokeType(3.0f));
+        graphics.strokePath(pointer, juce::PathStrokeType(3.0f * scale));
         graphics.setColour(juce::Colour::fromRGB(66, 35, 20));
-        graphics.drawLine(needleX, trackY - 24.0f, needleX, trackY + 24.0f, 2.4f);
+        graphics.drawLine(needleX, trackY - 24.0f * scale, needleX, trackY + 24.0f * scale, 2.4f * scale);
         graphics.fillPath(pointer);
 
         graphics.setColour(juce::Colour::fromRGB(49, 35, 23));
-        graphics.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
-        graphics.drawText("GAIN REDUCTION", juce::Rectangle<float>(rail.getX(), trackY + 25.0f, rail.getWidth(), 18.0f).toNearestInt(), juce::Justification::centred);
-        graphics.setFont(juce::FontOptions(14.0f).withStyle("Bold"));
-        graphics.drawText(juce::String(reductionDb, 1) + " dB", juce::Rectangle<float>(rail.getX(), face.getBottom() - 22.0f, rail.getWidth(), 20.0f).toNearestInt(), juce::Justification::centred);
+        graphics.setFont(juce::FontOptions(12.0f * scale).withStyle("Bold"));
+        graphics.drawText("GAIN REDUCTION", juce::Rectangle<float>(rail.getX(), trackY + 25.0f * scale, rail.getWidth(), 18.0f * scale).toNearestInt(), juce::Justification::centred);
+        graphics.setFont(juce::FontOptions(14.0f * scale).withStyle("Bold"));
+        graphics.drawText(juce::String(reductionDb, 1) + " dB", juce::Rectangle<float>(rail.getX(), face.getBottom() - 22.0f * scale, rail.getWidth(), 20.0f * scale).toNearestInt(), juce::Justification::centred);
         return;
     }
 

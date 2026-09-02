@@ -18,4 +18,4 @@ Phase 1 ranges: input -24 to +24 dB; threshold -60 to 0 dB; ratio 1:1 to 20:1; a
 
 ## Tiers And Roadmap
 
-One processor uses `PluginTier` and the `COMPRESSOR808BYTES_DELUXE` CMake option. Lite exposes the professional core controls and gain-reduction meter. Deluxe additionally exposes knee and detector high-pass in this phase. Future Deluxe work may implement the already-reserved detector mode, auto gain, character, oversampling, advanced meters, and expanded presets without changing preset IDs. Licensing and product activation are intentionally out of scope.
+One processor uses `PluginTier` and the `COMPRESSOR808BYTES_DELUXE` CMake option. Lite exposes the professional core controls and gain-reduction meter. Deluxe additionally exposes knee, detector high-pass, detector mode, character, and oversampling. Future Deluxe work may implement the already-reserved auto gain parameter, advanced meters, and expanded presets without changing preset IDs. Licensing and product activation are intentionally out of scope.

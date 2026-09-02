@@ -91,13 +91,16 @@ void KnobComponent::paint(juce::Graphics& graphics)
 
     const auto knobArea = slider.getBounds().toFloat();
     const auto side = std::min(knobArea.getWidth(), knobArea.getHeight());
+    if (side < 54.0f)
+        return;
+
     const auto centre = knobArea.withSizeKeepingCentre(side, side).getCentre();
     const auto radius = side * 0.39f;
     const auto startAngle = juce::MathConstants<float>::pi * 1.20f;
     const auto endAngle = juce::MathConstants<float>::pi * 2.80f;
 
     graphics.setColour(juce::Colour::fromRGB(28, 25, 20));
-    graphics.setFont(juce::FontOptions(side > 104.0f ? 12.0f : 10.0f));
+    graphics.setFont(juce::FontOptions(side > 104.0f ? 12.0f : side > 74.0f ? 10.0f : 8.0f));
 
     for (const auto& mark : marks)
     {
@@ -107,8 +110,8 @@ void KnobComponent::paint(juce::Graphics& graphics)
         const auto proportion = static_cast<float>(slider.valueToProportionOfLength(mark.value));
         const auto angle = startAngle + proportion * (endAngle - startAngle);
         const auto tickStart = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + 2.0f);
-        const auto tickEnd = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + 9.0f);
-        const auto position = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + 21.0f);
+        const auto tickEnd = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + (side > 74.0f ? 9.0f : 6.0f));
+        const auto position = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + (side > 74.0f ? 21.0f : 14.0f));
 
         graphics.drawLine(tickStart.x, tickStart.y, tickEnd.x, tickEnd.y, mark.value == 0.0f ? 1.8f : 1.1f);
         graphics.drawText(mark.label, juce::Rectangle<float>(position.x - 20.0f, position.y - 8.0f, 40.0f, 16.0f), juce::Justification::centred);
@@ -120,20 +123,21 @@ void KnobComponent::resized()
     auto bounds = getLocalBounds();
     const auto isLarge = controlSize == Size::Large;
     const auto isSmall = controlSize == Size::Small;
-    label.setFont(juce::FontOptions(isLarge ? 15.0f : isSmall ? 12.5f : 14.0f).withStyle("Bold"));
-    value.setFont(juce::FontOptions(isLarge ? 20.0f : isSmall ? 15.5f : 18.0f).withStyle("Bold"));
+    const auto compactScale = juce::jlimit(0.76f, 1.0f, static_cast<float>(getWidth()) / (isSmall ? 112.0f : isLarge ? 184.0f : 138.0f));
+    label.setFont(juce::FontOptions((isLarge ? 15.0f : isSmall ? 12.5f : 14.0f) * compactScale).withStyle("Bold"));
+    value.setFont(juce::FontOptions((isLarge ? 20.0f : isSmall ? 15.5f : 18.0f) * compactScale).withStyle("Bold"));
 
-    label.setBounds(bounds.removeFromTop(isSmall ? 21 : 24));
-    bounds.removeFromTop(isSmall ? 6 : 10);
+    label.setBounds(bounds.removeFromTop(juce::roundToInt((isSmall ? 21.0f : 24.0f) * compactScale)));
+    bounds.removeFromTop(juce::roundToInt((isSmall ? 6.0f : 10.0f) * compactScale));
 
-    auto readoutArea = bounds.removeFromBottom(isSmall ? 24 : 28);
-    const auto readoutWidth = isLarge ? 116 : isSmall ? 84 : 98;
-    value.setBounds(readoutArea.withSizeKeepingCentre(juce::jmin(readoutWidth, readoutArea.getWidth() - 10), isSmall ? 22 : 25));
-    bounds.removeFromBottom(isSmall ? 8 : 10);
+    auto readoutArea = bounds.removeFromBottom(juce::roundToInt((isSmall ? 24.0f : 28.0f) * compactScale));
+    const auto readoutWidth = juce::roundToInt((isLarge ? 116.0f : isSmall ? 84.0f : 98.0f) * compactScale);
+    value.setBounds(readoutArea.withSizeKeepingCentre(juce::jmin(readoutWidth, readoutArea.getWidth() - 8), juce::roundToInt((isSmall ? 22.0f : 25.0f) * compactScale)));
+    bounds.removeFromBottom(juce::roundToInt((isSmall ? 8.0f : 10.0f) * compactScale));
 
-    const auto maximumSide = isLarge ? 164 : isSmall ? 94 : 128;
-    const auto horizontalPadding = isLarge ? 54 : isSmall ? 34 : 48;
-    const auto sliderSide = juce::jmin(juce::jmin(bounds.getWidth() - horizontalPadding, bounds.getHeight()), maximumSide);
+    const auto maximumSide = juce::roundToInt((isLarge ? 164.0f : isSmall ? 94.0f : 128.0f) * compactScale);
+    const auto horizontalPadding = juce::roundToInt((isLarge ? 54.0f : isSmall ? 28.0f : 48.0f) * compactScale);
+    const auto sliderSide = juce::jmax(36, juce::jmin(juce::jmin(bounds.getWidth() - horizontalPadding, bounds.getHeight()), maximumSide));
     slider.setBounds(bounds.withSizeKeepingCentre(sliderSide, sliderSide));
 }
 
