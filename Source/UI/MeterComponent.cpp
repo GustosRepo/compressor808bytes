@@ -1,0 +1,168 @@
+#include "MeterComponent.h"
+
+#include <array>
+#include <cmath>
+
+namespace compressor808bytes
+{
+namespace
+{
+constexpr float meterRangeDb = 20.0f;
+
+struct MeterMark
+{
+    float gainChangeDb;
+};
+
+constexpr std::array<MeterMark, 9> gainChangeMarks {{
+    { -20.0f },
+    { -15.0f },
+    { -10.0f },
+    { -5.0f },
+    { 0.0f },
+    { 5.0f },
+    { 10.0f },
+    { 15.0f },
+    { 20.0f }
+}};
+
+constexpr std::array<MeterMark, 5> labelledGainChangeMarks {{
+    { -20.0f },
+    { -10.0f },
+    { 0.0f },
+    { 10.0f },
+    { 20.0f }
+}};
+
+float gainChangeToX(float gainChangeDb, juce::Rectangle<float> rail) noexcept
+{
+    const auto value = juce::jlimit(-meterRangeDb, meterRangeDb, gainChangeDb);
+    const auto zeroX = rail.getCentreX();
+
+    if (value < 0.0f)
+        return zeroX + (value / meterRangeDb) * (zeroX - rail.getX());
+
+    return zeroX + (value / meterRangeDb) * (rail.getRight() - zeroX);
+}
+} // namespace
+
+MeterComponent::MeterComponent(const juce::String& meterName, const std::atomic<float>& meterSource, bool reduction)
+    : name(meterName), source(meterSource), isGainReduction(reduction) {}
+
+void MeterComponent::paint(juce::Graphics& graphics)
+{
+    if (isGainReduction)
+    {
+        const auto bounds = getLocalBounds().toFloat().reduced(4.0f);
+        const auto value = juce::jlimit(-meterRangeDb, meterRangeDb, source.load(std::memory_order_relaxed));
+        const auto bezel = bounds.reduced(2.0f);
+        const auto face = bezel.reduced(30.0f, 28.0f).withTrimmedBottom(8.0f);
+        graphics.setColour(juce::Colour::fromRGB(5, 5, 5).withAlpha(0.45f));
+        graphics.fillRoundedRectangle(bounds.translated(3.0f, 5.0f), 8.0f);
+        graphics.setColour(juce::Colour::fromRGB(18, 18, 16));
+        graphics.fillRoundedRectangle(bezel, 8.0f);
+        graphics.setColour(juce::Colour::fromRGB(70, 62, 50));
+        graphics.drawRoundedRectangle(bezel, 8.0f, 1.4f);
+
+        for (auto point : { bezel.getTopLeft() + juce::Point<float>(17.0f, 17.0f),
+                            bezel.getTopRight() + juce::Point<float>(-17.0f, 17.0f),
+                            bezel.getBottomLeft() + juce::Point<float>(17.0f, -17.0f),
+                            bezel.getBottomRight() + juce::Point<float>(-17.0f, -17.0f) })
+        {
+            graphics.setColour(juce::Colour::fromRGB(7, 7, 6));
+            graphics.fillEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre(point));
+            graphics.setColour(juce::Colour::fromRGB(74, 62, 43));
+            graphics.drawEllipse(juce::Rectangle<float>(9.0f, 9.0f).withCentre(point), 1.0f);
+        }
+
+        graphics.setColour(juce::Colour::fromRGB(202, 157, 78));
+        graphics.fillRoundedRectangle(face, 5.0f);
+        graphics.setColour(juce::Colour::fromRGB(71, 48, 26).withAlpha(0.16f));
+        for (int mark = 0; mark < 90; ++mark)
+        {
+            const auto x = face.getX() + static_cast<float>((mark * 29) % juce::jmax(1, static_cast<int>(face.getWidth())));
+            const auto y = face.getY() + static_cast<float>((mark * 37) % juce::jmax(1, static_cast<int>(face.getHeight())));
+            graphics.fillEllipse(x, y, 1.0f + static_cast<float>(mark % 3), 0.8f + static_cast<float>(mark % 2));
+        }
+        graphics.setColour(juce::Colours::white.withAlpha(0.13f));
+        graphics.fillRoundedRectangle(face.withTrimmedBottom(face.getHeight() * 0.57f), 5.0f);
+        graphics.setColour(juce::Colour::fromRGB(64, 42, 25));
+        graphics.drawRoundedRectangle(face, 5.0f, 1.5f);
+
+        const auto rail = face.reduced(42.0f, 0.0f);
+        const auto zeroX = rail.getCentreX();
+        const auto trackY = face.getY() + face.getHeight() * 0.42f;
+        const auto needleX = gainChangeToX(value, rail);
+
+        graphics.setColour(juce::Colour::fromRGB(80, 55, 29).withAlpha(0.38f));
+        graphics.fillRect(juce::Rectangle<float>(rail.getX(), trackY - 2.0f, rail.getWidth(), 4.0f));
+        graphics.setColour(value < 0.0f ? juce::Colour::fromRGB(50, 31, 20).withAlpha(0.44f)
+                                         : juce::Colour::fromRGB(100, 63, 20).withAlpha(0.34f));
+        graphics.fillRect(value < 0.0f ? juce::Rectangle<float>(needleX, trackY - 4.0f, zeroX - needleX, 8.0f)
+                                       : juce::Rectangle<float>(zeroX, trackY - 4.0f, needleX - zeroX, 8.0f));
+
+        for (const auto mark : gainChangeMarks)
+        {
+            const auto tickX = gainChangeToX(mark.gainChangeDb, rail);
+            const auto tickHeight = mark.gainChangeDb == 0.0f || std::abs(mark.gainChangeDb) == 20.0f ? 30.0f : 20.0f;
+            graphics.setColour(mark.gainChangeDb > 0.0f ? juce::Colour::fromRGB(128, 44, 29) : juce::Colour::fromRGB(49, 35, 23));
+            graphics.drawLine(tickX, trackY - tickHeight * 0.5f, tickX, trackY + tickHeight * 0.5f, mark.gainChangeDb == 0.0f ? 2.2f : 1.2f);
+        }
+
+        graphics.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
+        for (const auto mark : labelledGainChangeMarks)
+        {
+            const auto markX = gainChangeToX(mark.gainChangeDb, rail);
+            const auto tickHeight = mark.gainChangeDb == 0.0f ? 34.0f : 28.0f;
+            graphics.setColour(mark.gainChangeDb > 0.0f ? juce::Colour::fromRGB(128, 44, 29) : juce::Colour::fromRGB(35, 25, 16));
+            graphics.drawLine(markX, trackY - tickHeight * 0.5f, markX, trackY + tickHeight * 0.5f, 2.2f);
+        }
+
+        for (const auto mark : labelledGainChangeMarks)
+        {
+            const auto markX = gainChangeToX(mark.gainChangeDb, rail);
+            graphics.setColour(mark.gainChangeDb > 0.0f ? juce::Colour::fromRGB(128, 44, 29) : juce::Colour::fromRGB(35, 25, 16));
+            const auto label = mark.gainChangeDb > 0.0f ? juce::String("+") + juce::String(juce::roundToInt(mark.gainChangeDb)) : juce::String(juce::roundToInt(mark.gainChangeDb));
+            graphics.drawText(label, juce::Rectangle<float>(markX - 20.0f, trackY - 34.0f, 40.0f, 16.0f), juce::Justification::centred);
+        }
+
+        juce::Path pointer;
+        pointer.addTriangle(needleX - 6.0f, trackY - 22.0f, needleX + 6.0f, trackY - 22.0f, needleX, trackY - 11.0f);
+        pointer.addTriangle(needleX - 6.0f, trackY + 22.0f, needleX + 6.0f, trackY + 22.0f, needleX, trackY + 11.0f);
+        graphics.setColour(juce::Colour::fromRGB(40, 20, 14).withAlpha(0.35f));
+        graphics.strokePath(pointer, juce::PathStrokeType(3.0f));
+        graphics.setColour(juce::Colour::fromRGB(66, 35, 20));
+        graphics.drawLine(needleX, trackY - 24.0f, needleX, trackY + 24.0f, 2.4f);
+        graphics.fillPath(pointer);
+
+        graphics.setColour(juce::Colour::fromRGB(49, 35, 23));
+        graphics.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
+        graphics.drawText("REDUCTION", juce::Rectangle<float>(rail.getX(), trackY + 25.0f, rail.getWidth() * 0.5f - 8.0f, 18.0f).toNearestInt(), juce::Justification::centredRight);
+        graphics.drawText("GAIN", juce::Rectangle<float>(zeroX + 8.0f, trackY + 25.0f, rail.getWidth() * 0.5f - 8.0f, 18.0f).toNearestInt(), juce::Justification::centredLeft);
+        return;
+    }
+
+    const auto bounds = getLocalBounds().toFloat().reduced(1.0f);
+    const auto value = source.load(std::memory_order_relaxed);
+    const auto normalized = juce::jlimit(0.0f, 1.0f, (value + 60.0f) / 60.0f);
+    auto meter = bounds;
+    auto labelArea = meter.removeFromTop(15.0f);
+    auto well = meter.reduced(6.0f, 3.0f);
+
+    graphics.setColour(juce::Colour::fromRGB(129, 116, 88).withAlpha(0.85f));
+    graphics.fillRoundedRectangle(bounds, 3.0f);
+    graphics.setColour(juce::Colour::fromRGB(35, 30, 23));
+    graphics.fillRoundedRectangle(well, 2.0f);
+
+    auto fill = well.reduced(3.0f);
+    fill = fill.removeFromBottom(fill.getHeight() * normalized);
+    graphics.setColour(normalized > 0.84f ? juce::Colour::fromRGB(179, 54, 26) : juce::Colour::fromRGB(224, 165, 76));
+    graphics.fillRoundedRectangle(fill, 1.5f);
+
+    graphics.setColour(juce::Colours::white.withAlpha(0.14f));
+    graphics.fillRect(well.withTrimmedRight(well.getWidth() * 0.55f));
+    graphics.setColour(juce::Colour::fromRGB(37, 31, 24));
+    graphics.setFont(juce::FontOptions(9.0f).withStyle("Bold"));
+    graphics.drawText(name, labelArea.toNearestInt(), juce::Justification::centred);
+}
+} // namespace compressor808bytes

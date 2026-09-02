@@ -1,0 +1,7 @@
+build/
+build-release/
+*.a
+*.o
+*.d
+*.app/
+.DS_Store
