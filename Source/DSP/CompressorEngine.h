@@ -16,6 +16,9 @@ struct CompressorParameters
     float makeupDb { 0.0f };
     float kneeDb { 0.0f };
     float sidechainHighPassHz { 20.0f };
+    int detectorMode { 0 };
+    int character { 0 };
+    int oversampling { 0 };
 };
 
 class CompressorEngine
@@ -29,10 +32,20 @@ public:
 
 private:
     [[nodiscard]] float calculateGainDb(float inputDb) const noexcept;
+    [[nodiscard]] float processDetector(float linkedPower, float linkedPeak) noexcept;
+    [[nodiscard]] float smoothGainDb(float targetGainDb) noexcept;
+    [[nodiscard]] float processCharacter(float sample, int channel, float gainReductionDb) noexcept;
+    [[nodiscard]] float shapeCharacterSample(float sample, float drive, float asymmetry) const noexcept;
 
     CompressorParameters parameters;
-    EnvelopeDetector detector;
     std::array<SidechainHighPassFilter, 2> sidechainFilters;
+    std::array<float, 2> previousCharacterInput {};
+    std::array<float, 2> characterLowPassState {};
+    std::array<bool, 2> characterStateInitialised {};
+    double sampleRateHz { 44100.0 };
+    float rmsEnvelopePower { 0.0f };
+    float peakEnvelope { 0.0f };
+    float smoothedGainDb { 0.0f };
     float gainReductionDb { 0.0f };
 };
 } // namespace compressor808bytes

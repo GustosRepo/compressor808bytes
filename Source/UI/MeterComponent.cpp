@@ -11,38 +11,33 @@ constexpr float meterRangeDb = 20.0f;
 
 struct MeterMark
 {
-    float gainChangeDb;
+    float valueDb;
 };
 
-constexpr std::array<MeterMark, 9> gainChangeMarks {{
-    { -20.0f },
-    { -15.0f },
-    { -10.0f },
-    { -5.0f },
+constexpr std::array<MeterMark, 9> reductionMarks {{
+    { 0.0f },
+    { 2.5f },
+    { 5.0f },
+    { 7.5f },
+    { 10.0f },
+    { 12.5f },
+    { 15.0f },
+    { 17.5f },
+    { 20.0f }
+}};
+
+constexpr std::array<MeterMark, 5> labelledReductionMarks {{
     { 0.0f },
     { 5.0f },
     { 10.0f },
     { 15.0f },
-    { 20.0f }
+    { 20.0f },
 }};
 
-constexpr std::array<MeterMark, 5> labelledGainChangeMarks {{
-    { -20.0f },
-    { -10.0f },
-    { 0.0f },
-    { 10.0f },
-    { 20.0f }
-}};
-
-float gainChangeToX(float gainChangeDb, juce::Rectangle<float> rail) noexcept
+float reductionToX(float reductionDb, juce::Rectangle<float> rail) noexcept
 {
-    const auto value = juce::jlimit(-meterRangeDb, meterRangeDb, gainChangeDb);
-    const auto zeroX = rail.getCentreX();
-
-    if (value < 0.0f)
-        return zeroX + (value / meterRangeDb) * (zeroX - rail.getX());
-
-    return zeroX + (value / meterRangeDb) * (rail.getRight() - zeroX);
+    const auto value = juce::jlimit(0.0f, meterRangeDb, reductionDb);
+    return rail.getRight() - (value / meterRangeDb) * rail.getWidth();
 }
 } // namespace
 
@@ -54,7 +49,7 @@ void MeterComponent::paint(juce::Graphics& graphics)
     if (isGainReduction)
     {
         const auto bounds = getLocalBounds().toFloat().reduced(4.0f);
-        const auto value = juce::jlimit(-meterRangeDb, meterRangeDb, source.load(std::memory_order_relaxed));
+        const auto reductionDb = juce::jlimit(0.0f, meterRangeDb, source.load(std::memory_order_relaxed));
         const auto bezel = bounds.reduced(2.0f);
         const auto face = bezel.reduced(30.0f, 28.0f).withTrimmedBottom(8.0f);
         graphics.setColour(juce::Colour::fromRGB(5, 5, 5).withAlpha(0.45f));
@@ -90,39 +85,36 @@ void MeterComponent::paint(juce::Graphics& graphics)
         graphics.drawRoundedRectangle(face, 5.0f, 1.5f);
 
         const auto rail = face.reduced(42.0f, 0.0f);
-        const auto zeroX = rail.getCentreX();
         const auto trackY = face.getY() + face.getHeight() * 0.42f;
-        const auto needleX = gainChangeToX(value, rail);
+        const auto needleX = reductionToX(reductionDb, rail);
 
         graphics.setColour(juce::Colour::fromRGB(80, 55, 29).withAlpha(0.38f));
         graphics.fillRect(juce::Rectangle<float>(rail.getX(), trackY - 2.0f, rail.getWidth(), 4.0f));
-        graphics.setColour(value < 0.0f ? juce::Colour::fromRGB(50, 31, 20).withAlpha(0.44f)
-                                         : juce::Colour::fromRGB(100, 63, 20).withAlpha(0.34f));
-        graphics.fillRect(value < 0.0f ? juce::Rectangle<float>(needleX, trackY - 4.0f, zeroX - needleX, 8.0f)
-                                       : juce::Rectangle<float>(zeroX, trackY - 4.0f, needleX - zeroX, 8.0f));
+        graphics.setColour(juce::Colour::fromRGB(50, 31, 20).withAlpha(0.44f));
+        graphics.fillRect(juce::Rectangle<float>(needleX, trackY - 4.0f, rail.getRight() - needleX, 8.0f));
 
-        for (const auto mark : gainChangeMarks)
+        for (const auto mark : reductionMarks)
         {
-            const auto tickX = gainChangeToX(mark.gainChangeDb, rail);
-            const auto tickHeight = mark.gainChangeDb == 0.0f || std::abs(mark.gainChangeDb) == 20.0f ? 30.0f : 20.0f;
-            graphics.setColour(mark.gainChangeDb > 0.0f ? juce::Colour::fromRGB(128, 44, 29) : juce::Colour::fromRGB(49, 35, 23));
-            graphics.drawLine(tickX, trackY - tickHeight * 0.5f, tickX, trackY + tickHeight * 0.5f, mark.gainChangeDb == 0.0f ? 2.2f : 1.2f);
+            const auto tickX = reductionToX(mark.valueDb, rail);
+            const auto tickHeight = mark.valueDb == 0.0f || std::abs(mark.valueDb) == 20.0f ? 30.0f : 20.0f;
+            graphics.setColour(juce::Colour::fromRGB(49, 35, 23));
+            graphics.drawLine(tickX, trackY - tickHeight * 0.5f, tickX, trackY + tickHeight * 0.5f, mark.valueDb == 0.0f ? 2.2f : 1.2f);
         }
 
         graphics.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
-        for (const auto mark : labelledGainChangeMarks)
+        for (const auto mark : labelledReductionMarks)
         {
-            const auto markX = gainChangeToX(mark.gainChangeDb, rail);
-            const auto tickHeight = mark.gainChangeDb == 0.0f ? 34.0f : 28.0f;
-            graphics.setColour(mark.gainChangeDb > 0.0f ? juce::Colour::fromRGB(128, 44, 29) : juce::Colour::fromRGB(35, 25, 16));
+            const auto markX = reductionToX(mark.valueDb, rail);
+            const auto tickHeight = mark.valueDb == 0.0f ? 34.0f : 28.0f;
+            graphics.setColour(juce::Colour::fromRGB(35, 25, 16));
             graphics.drawLine(markX, trackY - tickHeight * 0.5f, markX, trackY + tickHeight * 0.5f, 2.2f);
         }
 
-        for (const auto mark : labelledGainChangeMarks)
+        for (const auto mark : labelledReductionMarks)
         {
-            const auto markX = gainChangeToX(mark.gainChangeDb, rail);
-            graphics.setColour(mark.gainChangeDb > 0.0f ? juce::Colour::fromRGB(128, 44, 29) : juce::Colour::fromRGB(35, 25, 16));
-            const auto label = mark.gainChangeDb > 0.0f ? juce::String("+") + juce::String(juce::roundToInt(mark.gainChangeDb)) : juce::String(juce::roundToInt(mark.gainChangeDb));
+            const auto markX = reductionToX(mark.valueDb, rail);
+            graphics.setColour(juce::Colour::fromRGB(35, 25, 16));
+            const auto label = juce::String(juce::roundToInt(mark.valueDb));
             graphics.drawText(label, juce::Rectangle<float>(markX - 20.0f, trackY - 34.0f, 40.0f, 16.0f), juce::Justification::centred);
         }
 
@@ -137,8 +129,9 @@ void MeterComponent::paint(juce::Graphics& graphics)
 
         graphics.setColour(juce::Colour::fromRGB(49, 35, 23));
         graphics.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
-        graphics.drawText("REDUCTION", juce::Rectangle<float>(rail.getX(), trackY + 25.0f, rail.getWidth() * 0.5f - 8.0f, 18.0f).toNearestInt(), juce::Justification::centredRight);
-        graphics.drawText("GAIN", juce::Rectangle<float>(zeroX + 8.0f, trackY + 25.0f, rail.getWidth() * 0.5f - 8.0f, 18.0f).toNearestInt(), juce::Justification::centredLeft);
+        graphics.drawText("GAIN REDUCTION", juce::Rectangle<float>(rail.getX(), trackY + 25.0f, rail.getWidth(), 18.0f).toNearestInt(), juce::Justification::centred);
+        graphics.setFont(juce::FontOptions(14.0f).withStyle("Bold"));
+        graphics.drawText(juce::String(reductionDb, 1) + " dB", juce::Rectangle<float>(rail.getX(), face.getBottom() - 22.0f, rail.getWidth(), 20.0f).toNearestInt(), juce::Justification::centred);
         return;
     }
 
@@ -147,6 +140,7 @@ void MeterComponent::paint(juce::Graphics& graphics)
     const auto normalized = juce::jlimit(0.0f, 1.0f, (value + 60.0f) / 60.0f);
     auto meter = bounds;
     auto labelArea = meter.removeFromTop(15.0f);
+    auto readoutArea = meter.removeFromBottom(16.0f);
     auto well = meter.reduced(6.0f, 3.0f);
 
     graphics.setColour(juce::Colour::fromRGB(129, 116, 88).withAlpha(0.85f));
@@ -164,5 +158,7 @@ void MeterComponent::paint(juce::Graphics& graphics)
     graphics.setColour(juce::Colour::fromRGB(37, 31, 24));
     graphics.setFont(juce::FontOptions(9.0f).withStyle("Bold"));
     graphics.drawText(name, labelArea.toNearestInt(), juce::Justification::centred);
+    const auto readout = value <= -99.0f ? juce::String("-inf") : juce::String(juce::roundToInt(value));
+    graphics.drawText(readout, readoutArea.toNearestInt(), juce::Justification::centred);
 }
 } // namespace compressor808bytes

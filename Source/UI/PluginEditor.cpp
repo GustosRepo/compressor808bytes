@@ -43,13 +43,15 @@ void drawAgeMarks(juce::Graphics& graphics, juce::Rectangle<float> area)
 } // namespace
 
 CompressorAudioProcessorEditor::CompressorAudioProcessorEditor(CompressorAudioProcessor& p)
-    : AudioProcessorEditor(&p), audioProcessor(p), inputMeter("IN", audioProcessor.getInputLevelSource()), outputMeter("OUT", audioProcessor.getOutputLevelSource()), reductionMeter("GR", audioProcessor.getMeterGainChangeSource(), true)
+    : AudioProcessorEditor(&p), audioProcessor(p), inputMeter("IN", audioProcessor.getInputLevelSource()), outputMeter("OUT", audioProcessor.getOutputLevelSource()), reductionMeter("GR", audioProcessor.getGainReductionSource(), true)
 {
     setLookAndFeel(&weatheredLookAndFeel);
     setResizable(true, true);
     setResizeLimits(980, 680, 1500, 980);
     for (auto* control : { &input, &threshold, &ratio, &attack, &release, &makeup, &mix, &output }) addAndMakeVisible(*control);
     if (audioProcessor.getTier() == PluginTier::Deluxe) { addChildComponent(knee); addAndMakeVisible(sidechainHighPass); }
+    addAndMakeVisible(inputMeter);
+    addAndMakeVisible(outputMeter);
     addAndMakeVisible(reductionMeter);
     addAndMakeVisible(bypass);
     applyControlHierarchy();
@@ -136,6 +138,10 @@ void CompressorAudioProcessorEditor::resized()
 
     const auto meterWidth = juce::jlimit(330, 430, width - 610);
     reductionMeter.setBounds(width / 2 - meterWidth / 2, body.getY() + 42, meterWidth, 160);
+    const auto levelMeterWidth = 54;
+    const auto levelMeterGap = 18;
+    inputMeter.setBounds(reductionMeter.getX() - levelMeterGap - levelMeterWidth, reductionMeter.getY(), levelMeterWidth, reductionMeter.getHeight());
+    outputMeter.setBounds(reductionMeter.getRight() + levelMeterGap, reductionMeter.getY(), levelMeterWidth, reductionMeter.getHeight());
     bypass.setBounds(width - 190, body.getY() + 66, 92, 92);
 
     const auto smallWidth = juce::jlimit(112, 132, body.getWidth() / 8);

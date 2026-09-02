@@ -2,6 +2,7 @@
 #include "UI/PluginEditor.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace compressor808bytes
 {
@@ -40,7 +41,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
     addFloat("sidechainHPF", "Sidechain HPF", { 20.0f, 500.0f, 1.0f, 0.35f }, 20.0f, "Hz");
     layout.push_back(std::make_unique<juce::AudioParameterChoice>("detectorMode", "Detector Mode", juce::StringArray { "RMS", "Peak" }, 0));
     layout.push_back(std::make_unique<juce::AudioParameterBool>("autoGain", "Auto Gain", false));
-    layout.push_back(std::make_unique<juce::AudioParameterChoice>("character", "Character", juce::StringArray { "Clean" }, 0));
+    layout.push_back(std::make_unique<juce::AudioParameterChoice>("character", "Character", juce::StringArray { "Clean", "Warm", "Punch" }, 0));
     layout.push_back(std::make_unique<juce::AudioParameterChoice>("oversampling", "Oversampling", juce::StringArray { "Off", "2x", "4x" }, 0));
     layout.push_back(std::make_unique<juce::AudioParameterBool>("bypass", "Bypass", false));
     return { layout.begin(), layout.end() };
@@ -87,6 +88,10 @@ void CompressorAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     juce::ScopedNoDenormals noDenormals;
     const auto channels = buffer.getNumChannels();
     const auto samples = buffer.getNumSamples();
+    const auto parameterChoice = [this] (const char* id)
+    {
+        return static_cast<int>(std::round(parameters.getRawParameterValue(id)->load()));
+    };
     inputLevelDb.store(bufferPeakDb(buffer), std::memory_order_relaxed);
     updateSmoothers();
 
@@ -102,7 +107,7 @@ void CompressorAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     auto blockGainReductionDb = 0.0f;
     for (int sample = 0; sample < samples; ++sample)
     {
-        CompressorParameters current { thresholdDb.getNextValue(), ratio.getNextValue(), attackMs.getNextValue(), releaseMs.getNextValue(), makeupDb.getNextValue(), kneeDb.getNextValue(), sidechainHighPassHz.getNextValue() };
+        CompressorParameters current { thresholdDb.getNextValue(), ratio.getNextValue(), attackMs.getNextValue(), releaseMs.getNextValue(), makeupDb.getNextValue(), kneeDb.getNextValue(), sidechainHighPassHz.getNextValue(), parameterChoice("detectorMode"), parameterChoice("character"), parameterChoice("oversampling") };
         compressor.setParameters(current);
         float* pointers[] { buffer.getWritePointer(0, sample), buffer.getWritePointer(1, sample) };
         compressor.process(pointers, channels, 1);
