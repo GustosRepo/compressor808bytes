@@ -10,6 +10,7 @@ namespace
 constexpr float minimumLinearLevel = 1.0e-12f;
 constexpr float minimumDb = -120.0f;
 constexpr float pi = 3.14159265358979323846f;
+constexpr float allButtonsRatioThreshold = 20.5f;
 
 float linearToDb(float level) noexcept
 {
@@ -18,7 +19,7 @@ float linearToDb(float level) noexcept
 
 float coefficientForMilliseconds(float milliseconds, double sampleRate, float multiplier = 1.0f) noexcept
 {
-    const auto seconds = std::max(0.0001f, milliseconds * multiplier * 0.001f);
+    const auto seconds = std::max(0.00002f, milliseconds * multiplier * 0.001f);
     return std::exp(-1.0f / (seconds * static_cast<float>(std::max(1.0, sampleRate))));
 }
 
@@ -63,7 +64,14 @@ float CompressorEngine::calculateGainDb(float inputDb) const noexcept
 {
     const auto ratio = std::max(1.0f, parameters.ratio);
     const auto slope = (1.0f / ratio) - 1.0f;
-    const auto knee = std::max(0.0f, parameters.kneeDb);
+    const auto knee = std::clamp(parameters.kneeDb, 0.0f, 8.0f);
+
+    if (ratio >= allButtonsRatioThreshold)
+    {
+        const auto overThresholdDb = std::max(0.0f, inputDb - parameters.thresholdDb);
+        const auto progressiveSlope = -0.82f - 0.16f * std::tanh(overThresholdDb / 10.0f);
+        return std::min(0.0f, overThresholdDb * progressiveSlope);
+    }
 
     if (knee <= 0.0f)
         return std::min(0.0f, std::max(0.0f, inputDb - parameters.thresholdDb) * slope);
@@ -81,24 +89,25 @@ float CompressorEngine::calculateGainDb(float inputDb) const noexcept
 
 float CompressorEngine::processDetector(float linkedPower, float linkedPeak) noexcept
 {
-    const auto attackCoefficient = coefficientForMilliseconds(parameters.attackMs, sampleRateHz);
-    const auto releaseCoefficient = coefficientForMilliseconds(parameters.releaseMs, sampleRateHz);
+    const auto attackCoefficient = coefficientForMilliseconds(parameters.attackMs * 1.35f, sampleRateHz);
+    const auto releaseCoefficient = coefficientForMilliseconds(parameters.releaseMs * 0.72f, sampleRateHz);
     const auto rmsCoefficient = linkedPower > rmsEnvelopePower ? attackCoefficient : releaseCoefficient;
     rmsEnvelopePower = rmsCoefficient * rmsEnvelopePower + (1.0f - rmsCoefficient) * linkedPower;
 
-    const auto peakAttackCoefficient = coefficientForMilliseconds(std::max(0.02f, parameters.attackMs * 0.45f), sampleRateHz);
-    const auto peakReleaseCoefficient = coefficientForMilliseconds(std::max(5.0f, parameters.releaseMs * 0.55f), sampleRateHz);
+    const auto fastDetector = parameters.detectorMode == 1;
+    const auto peakAttackCoefficient = coefficientForMilliseconds(std::max(0.02f, parameters.attackMs * (fastDetector ? 0.16f : 0.32f)), sampleRateHz);
+    const auto peakReleaseCoefficient = coefficientForMilliseconds(std::max(25.0f, parameters.releaseMs * (fastDetector ? 0.50f : 0.36f)), sampleRateHz);
     const auto peakCoefficient = linkedPeak > peakEnvelope ? peakAttackCoefficient : peakReleaseCoefficient;
     peakEnvelope = peakCoefficient * peakEnvelope + (1.0f - peakCoefficient) * linkedPeak;
 
     const auto rmsLevel = std::sqrt(std::max(rmsEnvelopePower, 0.0f));
-    const auto peakBlend = parameters.detectorMode == 1 ? 0.72f : 0.28f;
+    const auto peakBlend = fastDetector ? 0.98f : 0.58f;
     return rmsLevel + (std::max(peakEnvelope, rmsLevel) - rmsLevel) * peakBlend;
 }
 
 float CompressorEngine::smoothGainDb(float targetGainDb) noexcept
 {
-    const auto attackCoefficient = coefficientForMilliseconds(std::max(0.02f, parameters.attackMs * 0.6f), sampleRateHz);
+    const auto attackCoefficient = coefficientForMilliseconds(std::max(0.02f, parameters.attackMs * 0.28f), sampleRateHz);
 
     if (targetGainDb < smoothedGainDb)
     {
@@ -108,9 +117,9 @@ float CompressorEngine::smoothGainDb(float targetGainDb) noexcept
 
     const auto currentReductionDb = std::max(0.0f, -smoothedGainDb);
     const auto targetReductionDb = std::max(0.0f, -targetGainDb);
-    const auto releaseDepth = std::clamp(currentReductionDb / 14.0f, 0.0f, 1.0f);
-    const auto recoveryDistance = std::clamp((currentReductionDb - targetReductionDb) / 12.0f, 0.0f, 1.0f);
-    const auto releaseMultiplier = std::clamp(0.48f + releaseDepth * 1.55f - recoveryDistance * 0.28f, 0.35f, 2.1f);
+    const auto releaseDepth = std::clamp(currentReductionDb / 18.0f, 0.0f, 1.0f);
+    const auto recoveryDistance = std::clamp((currentReductionDb - targetReductionDb) / 10.0f, 0.0f, 1.0f);
+    const auto releaseMultiplier = std::clamp(0.22f + releaseDepth * 1.18f - recoveryDistance * 0.16f, 0.18f, 1.4f);
     const auto releaseCoefficient = coefficientForMilliseconds(parameters.releaseMs, sampleRateHz, releaseMultiplier);
     smoothedGainDb = releaseCoefficient * smoothedGainDb + (1.0f - releaseCoefficient) * targetGainDb;
     return smoothedGainDb;
@@ -144,11 +153,11 @@ float CompressorEngine::processCharacter(float sample, int channel, float reduct
         characterStateInitialised[channelIndex] = true;
     }
 
-    const auto baseDrive = characterMode == 1 ? 1.18f : 1.32f;
-    const auto dynamicDrive = std::min(0.38f, reductionDb * (characterMode == 1 ? 0.012f : 0.018f));
+    const auto baseDrive = characterMode == 1 ? 1.28f : 1.56f;
+    const auto dynamicDrive = std::min(0.52f, reductionDb * (characterMode == 1 ? 0.016f : 0.026f));
     const auto drive = baseDrive + dynamicDrive;
-    const auto asymmetry = characterMode == 1 ? 0.018f : 0.028f;
-    const auto wetMix = characterMode == 1 ? 0.18f : 0.24f;
+    const auto asymmetry = characterMode == 1 ? 0.021f : 0.038f;
+    const auto wetMix = characterMode == 1 ? 0.20f : 0.34f;
     const auto oversamplingFactor = parameters.oversampling == 2 ? 4 : (parameters.oversampling == 1 ? 2 : 1);
     const auto oversampledRate = sampleRateHz * static_cast<double>(oversamplingFactor);
     const auto lowPassCoefficient = onePoleLowPassCoefficient(std::min(18000.0f, 0.43f * static_cast<float>(sampleRateHz)), oversampledRate);

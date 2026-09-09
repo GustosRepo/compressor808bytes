@@ -202,7 +202,7 @@ bool testGainReductionMeterBallistics()
         && check(signedRiseIsCalibrated, "gain-change meter supports negative values with calibrated timing");
 }
 
-float processOneSidedCrestSignal(int detectorMode)
+float gainReductionForSparseTransientSignal(int detectorMode)
 {
     constexpr int blockSize = 512;
     CompressorEngine engine;
@@ -222,21 +222,21 @@ float processOneSidedCrestSignal(int detectorMode)
     {
         for (size_t sample = 0; sample < left.size(); ++sample)
         {
-            left[sample] = sample % 2 == 0 ? 1.0f : -1.0f;
+            left[sample] = sample % 16 == 0 ? 1.0f : 0.0f;
             right[sample] = 0.0f;
         }
         engine.process(channels, 2, static_cast<int>(left.size()));
     }
 
-    return gainToDecibels(left.back());
+    return engine.getGainReductionDb();
 }
 
 bool testHybridDetectorModes()
 {
-    const auto rmsBiasedGainDb = processOneSidedCrestSignal(0);
-    const auto peakBiasedGainDb = processOneSidedCrestSignal(1);
+    const auto vintageReductionDb = gainReductionForSparseTransientSignal(0);
+    const auto fastReductionDb = gainReductionForSparseTransientSignal(1);
 
-    return check(peakBiasedGainDb < rmsBiasedGainDb - 0.6f, "peak-biased hybrid detector clamps crestier material harder than RMS-biased mode");
+    return check(fastReductionDb > vintageReductionDb + 0.6f, "fast detector clamps sparse transients harder than vintage mode");
 }
 
 float releaseAfterSettledCompression(float amplitude)
@@ -265,6 +265,35 @@ bool testProgramDependentRelease()
 
     return check(deepReleaseDb > lightReleaseDb + 8.0f, "program-dependent release holds deeper compression longer than light compression")
         && check(lightReleaseDb > 0.0f && deepReleaseDb > 0.0f, "release remains smooth instead of snapping to zero");
+}
+
+float settledReductionForRatio(float ratio)
+{
+    constexpr int blockSize = 512;
+    CompressorEngine engine;
+    engine.prepare(48000.0, blockSize, 2);
+    CompressorParameters parameters;
+    parameters.thresholdDb = -28.0f;
+    parameters.ratio = ratio;
+    parameters.attackMs = 0.05f;
+    parameters.releaseMs = 180.0f;
+    parameters.detectorMode = 1;
+    engine.setParameters(parameters);
+
+    std::vector<float> left(blockSize, 0.0f);
+    std::vector<float> right(blockSize, 0.0f);
+    processSignal(engine, left, right, 0.75f, 16);
+    return engine.getGainReductionDb();
+}
+
+bool testFetRatioExtremes()
+{
+    const auto fourToOneReductionDb = settledReductionForRatio(4.0f);
+    const auto twentyToOneReductionDb = settledReductionForRatio(20.0f);
+    const auto allButtonsReductionDb = settledReductionForRatio(21.0f);
+
+    return check(twentyToOneReductionDb > fourToOneReductionDb + 4.0f, "20:1 ratio produces substantially more FET limiting than 4:1")
+        && check(allButtonsReductionDb > twentyToOneReductionDb + 0.5f, "all-buttons-style ratio is more aggressive than 20:1");
 }
 
 bool testCharacterStageAndOversampling()
@@ -368,6 +397,7 @@ int main()
     passed = testGainReductionMeterBallistics() && passed;
     passed = testHybridDetectorModes() && passed;
     passed = testProgramDependentRelease() && passed;
+    passed = testFetRatioExtremes() && passed;
     passed = testCharacterStageAndOversampling() && passed;
     passed = testOversamplingModesAreFunctional() && passed;
 

@@ -41,6 +41,6 @@ Ad-hoc signing is for local development only. A commercial release requires a De
 
 2. Restart FL Studio and open `Options > Manage plugins`.
 3. Run `Find installed plugins`, then enable `808Bytes Compressor` in the list.
-4. Add it to a mixer insert, lower Threshold, and monitor gain reduction while adjusting Ratio, Attack, Release, Mix, and Makeup.
+4. Add it to a mixer insert, lower Peak Reduction/Threshold, and monitor gain reduction while adjusting the ratio buttons, Attack, Release, Mix, and Makeup.
 
 AU is built for AU-compatible hosts and is installed by copying the component to `~/Library/Audio/Plug-Ins/Components/`. FL Studio on macOS should be tested with the VST3 build.

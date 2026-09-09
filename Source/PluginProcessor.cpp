@@ -2,6 +2,7 @@
 #include "UI/PluginEditor.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace compressor808bytes
@@ -11,6 +12,25 @@ namespace
 juce::AudioParameterFloatAttributes parameterAttributes(const juce::String& label)
 {
     return juce::AudioParameterFloatAttributes().withLabel(label);
+}
+
+float nearestFetRatio(float value) noexcept
+{
+    constexpr std::array<float, 5> ratios { 4.0f, 8.0f, 12.0f, 20.0f, 21.0f };
+    auto nearest = ratios.front();
+    auto nearestDistance = std::abs(value - nearest);
+
+    for (const auto ratio : ratios)
+    {
+        const auto distance = std::abs(value - ratio);
+        if (distance < nearestDistance)
+        {
+            nearest = ratio;
+            nearestDistance = distance;
+        }
+    }
+
+    return nearest;
 }
 } // namespace
 
@@ -30,19 +50,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
         layout.push_back(std::make_unique<juce::AudioParameterFloat>(id, name, range, defaultValue, parameterAttributes(label)));
     };
     addFloat("input", "Input", { -24.0f, 24.0f, 0.1f }, 0.0f, "dB");
-    addFloat("threshold", "Threshold", { -60.0f, 0.0f, 0.1f }, -18.0f, "dB");
-    addFloat("ratio", "Ratio", { 1.0f, 20.0f, 0.01f, 0.35f }, 4.0f, ":1");
-    addFloat("attack", "Attack", { 0.1f, 100.0f, 0.1f, 0.4f }, 10.0f, "ms");
-    addFloat("release", "Release", { 10.0f, 2000.0f, 0.1f, 0.4f }, 100.0f, "ms");
+    addFloat("threshold", "Peak Reduction", { -60.0f, 0.0f, 0.1f }, -18.0f, "dB");
+    addFloat("ratio", "Ratio", { 4.0f, 21.0f, 0.01f, 0.45f }, 4.0f, ":1");
+    addFloat("attack", "Attack", { 0.02f, 0.8f, 0.001f, 0.45f }, 0.2f, "ms");
+    addFloat("release", "Release", { 50.0f, 1100.0f, 0.1f, 0.45f }, 250.0f, "ms");
     addFloat("makeup", "Makeup", { -12.0f, 24.0f, 0.1f }, 0.0f, "dB");
     addFloat("mix", "Mix", { 0.0f, 100.0f, 0.1f }, 100.0f, "%");
     addFloat("output", "Output", { -24.0f, 12.0f, 0.1f }, 0.0f, "dB");
-    addFloat("knee", "Knee", { 0.0f, 24.0f, 0.1f }, 6.0f, "dB");
-    addFloat("sidechainHPF", "Sidechain HPF", { 20.0f, 500.0f, 1.0f, 0.35f }, 20.0f, "Hz");
-    layout.push_back(std::make_unique<juce::AudioParameterChoice>("detectorMode", "Detector Mode", juce::StringArray { "RMS", "Peak" }, 0));
+    addFloat("knee", "Knee", { 0.0f, 8.0f, 0.1f }, 1.5f, "dB");
+    addFloat("sidechainHPF", "Sidechain HPF", { 20.0f, 500.0f, 1.0f, 0.35f }, 30.0f, "Hz");
+    layout.push_back(std::make_unique<juce::AudioParameterChoice>("detectorMode", "Detector Mode", juce::StringArray { "Vintage", "Fast" }, 0));
     layout.push_back(std::make_unique<juce::AudioParameterBool>("autoGain", "Auto Gain", false));
-    layout.push_back(std::make_unique<juce::AudioParameterChoice>("character", "Character", juce::StringArray { "Clean", "Warm", "Punch" }, 0));
-    layout.push_back(std::make_unique<juce::AudioParameterChoice>("oversampling", "Oversampling", juce::StringArray { "Off", "2x", "4x" }, 0));
+    layout.push_back(std::make_unique<juce::AudioParameterChoice>("character", "Character", juce::StringArray { "Clean", "Transformer", "FET Push" }, 2));
+    layout.push_back(std::make_unique<juce::AudioParameterChoice>("oversampling", "Oversampling", juce::StringArray { "Off", "2x", "4x" }, 1));
     layout.push_back(std::make_unique<juce::AudioParameterBool>("bypass", "Bypass", false));
     return { layout.begin(), layout.end() };
 }
@@ -107,7 +127,7 @@ void CompressorAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     auto blockGainReductionDb = 0.0f;
     for (int sample = 0; sample < samples; ++sample)
     {
-        CompressorParameters current { thresholdDb.getNextValue(), ratio.getNextValue(), attackMs.getNextValue(), releaseMs.getNextValue(), makeupDb.getNextValue(), kneeDb.getNextValue(), sidechainHighPassHz.getNextValue(), parameterChoice("detectorMode"), parameterChoice("character"), parameterChoice("oversampling") };
+        CompressorParameters current { thresholdDb.getNextValue(), nearestFetRatio(ratio.getNextValue()), attackMs.getNextValue(), releaseMs.getNextValue(), makeupDb.getNextValue(), kneeDb.getNextValue(), sidechainHighPassHz.getNextValue(), parameterChoice("detectorMode"), parameterChoice("character"), parameterChoice("oversampling") };
         compressor.setParameters(current);
         float* pointers[] { buffer.getWritePointer(0, sample), buffer.getWritePointer(1, sample) };
         compressor.process(pointers, channels, 1);

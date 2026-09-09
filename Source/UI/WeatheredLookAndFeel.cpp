@@ -32,11 +32,11 @@ void WeatheredLookAndFeel::drawRotarySlider(juce::Graphics& graphics, int x, int
 {
     const auto rawBounds = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y), static_cast<float>(width), static_cast<float>(height));
     const auto side = std::min(rawBounds.getWidth(), rawBounds.getHeight());
-    const auto bounds = rawBounds.withSizeKeepingCentre(side, side).reduced(16.0f);
+    const auto visualScale = juce::jlimit(0.56f, 1.0f, side / 128.0f);
+    const auto bounds = rawBounds.withSizeKeepingCentre(side, side).reduced(16.0f * visualScale);
     const auto radius = std::min(bounds.getWidth(), bounds.getHeight()) * 0.5f;
     const auto centre = bounds.getCentre();
     const auto angle = startAngle + sliderPosition * (endAngle - startAngle);
-    const auto visualScale = juce::jlimit(0.56f, 1.0f, side / 128.0f);
 
     graphics.setColour(juce::Colour::fromRGB(10, 10, 9).withAlpha(0.52f));
     graphics.fillEllipse(bounds.expanded(6.0f * visualScale).translated(3.0f * visualScale, 5.0f * visualScale));
@@ -96,53 +96,58 @@ void WeatheredLookAndFeel::drawToggleButton(juce::Graphics& graphics, juce::Togg
 {
     auto bounds = button.getLocalBounds().toFloat();
     const auto lampSize = std::min(bounds.getWidth() * 0.54f, bounds.getHeight() * 0.56f);
+    const auto visualScale = juce::jlimit(0.56f, 1.0f, lampSize / 52.0f);
     const auto switchBounds = juce::Rectangle<float>(lampSize, lampSize).withCentre({ bounds.getCentreX(), bounds.getY() + lampSize * 0.58f });
     graphics.setColour(juce::Colour::fromRGB(10, 10, 9).withAlpha(0.5f));
-    graphics.fillEllipse(switchBounds.expanded(6.0f).translated(2.0f, 4.0f));
+    graphics.fillEllipse(switchBounds.expanded(6.0f * visualScale).translated(2.0f * visualScale, 4.0f * visualScale));
     graphics.setColour(juce::Colour::fromRGB(13, 12, 10));
-    graphics.fillEllipse(switchBounds.expanded(4.0f));
+    graphics.fillEllipse(switchBounds.expanded(4.0f * visualScale));
     graphics.setColour(juce::Colour::fromRGB(93, 82, 63));
-    graphics.drawEllipse(switchBounds.expanded(4.0f), 2.0f);
+    graphics.drawEllipse(switchBounds.expanded(4.0f * visualScale), 2.0f * visualScale);
     const auto lit = button.getToggleState();
     graphics.setColour(lit ? juce::Colour::fromRGB(255, 159, 37) : juce::Colour::fromRGB(106, 72, 28));
     graphics.fillEllipse(switchBounds.reduced(5.0f));
     graphics.setColour(juce::Colours::white.withAlpha(lit ? 0.55f : 0.16f));
     graphics.fillEllipse(switchBounds.reduced(lampSize * 0.34f).translated(-lampSize * 0.1f, -lampSize * 0.13f));
     graphics.setColour(panelInk);
-    graphics.setFont(juce::FontOptions(13.0f).withStyle("Bold"));
+    graphics.setFont(juce::FontOptions(13.0f * visualScale).withStyle("Bold"));
     graphics.drawText(button.getButtonText().toUpperCase(), bounds.withTrimmedTop(lampSize + 12.0f).toNearestInt(), juce::Justification::centred);
 }
 
 void WeatheredLookAndFeel::drawComboBox(juce::Graphics& graphics, int width, int height, bool isButtonDown,
                                         int buttonX, int buttonY, int buttonW, int buttonH, juce::ComboBox& box)
 {
+    const auto visualScale = juce::jlimit(0.72f, 1.0f, static_cast<float>(height) / 28.0f);
     const auto bounds = juce::Rectangle<float>(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)).reduced(0.5f);
     graphics.setColour(juce::Colour::fromRGB(3, 3, 3).withAlpha(0.42f));
-    graphics.fillRoundedRectangle(bounds.translated(1.0f, 2.0f), 3.0f);
+    graphics.fillRoundedRectangle(bounds.translated(1.0f * visualScale, 2.0f * visualScale), 3.0f * visualScale);
     graphics.setColour(box.findColour(juce::ComboBox::backgroundColourId));
-    graphics.fillRoundedRectangle(bounds, 3.0f);
+    graphics.fillRoundedRectangle(bounds, 3.0f * visualScale);
     graphics.setColour(juce::Colours::white.withAlpha(0.05f));
-    graphics.fillRoundedRectangle(bounds.withTrimmedBottom(bounds.getHeight() * 0.56f), 3.0f);
+    graphics.fillRoundedRectangle(bounds.withTrimmedBottom(bounds.getHeight() * 0.56f), 3.0f * visualScale);
     graphics.setColour(juce::Colour::fromRGB(95, 58, 28).withAlpha(0.18f));
-    graphics.drawLine(bounds.getX() + 5.0f, bounds.getBottom() - 5.0f, bounds.getRight() - 17.0f, bounds.getBottom() - 8.0f, 0.8f);
-    graphics.drawLine(bounds.getX() + 13.0f, bounds.getY() + 7.0f, bounds.getRight() - 28.0f, bounds.getY() + 10.0f, 0.55f);
+    graphics.drawLine(bounds.getX() + 5.0f * visualScale, bounds.getBottom() - 5.0f * visualScale,
+                      bounds.getRight() - 17.0f * visualScale, bounds.getBottom() - 8.0f * visualScale, 0.8f * visualScale);
+    graphics.drawLine(bounds.getX() + 13.0f * visualScale, bounds.getY() + 7.0f * visualScale,
+                      bounds.getRight() - 28.0f * visualScale, bounds.getY() + 10.0f * visualScale, 0.55f * visualScale);
     graphics.setColour(isButtonDown ? juce::Colour::fromRGB(118, 96, 62) : box.findColour(juce::ComboBox::outlineColourId));
-    graphics.drawRoundedRectangle(bounds, 3.0f, 1.2f);
+    graphics.drawRoundedRectangle(bounds, 3.0f * visualScale, 1.2f * visualScale);
 
     const auto buttonBounds = juce::Rectangle<float>(static_cast<float>(buttonX), static_cast<float>(buttonY),
                                                     static_cast<float>(buttonW), static_cast<float>(buttonH));
     juce::Path arrow;
-    arrow.addTriangle(buttonBounds.getCentreX() - 4.5f, buttonBounds.getCentreY() - 2.0f,
-                      buttonBounds.getCentreX() + 4.5f, buttonBounds.getCentreY() - 2.0f,
-                      buttonBounds.getCentreX(), buttonBounds.getCentreY() + 4.0f);
+    arrow.addTriangle(buttonBounds.getCentreX() - 4.5f * visualScale, buttonBounds.getCentreY() - 2.0f * visualScale,
+                      buttonBounds.getCentreX() + 4.5f * visualScale, buttonBounds.getCentreY() - 2.0f * visualScale,
+                      buttonBounds.getCentreX(), buttonBounds.getCentreY() + 4.0f * visualScale);
     graphics.setColour(box.findColour(juce::ComboBox::arrowColourId));
     graphics.fillPath(arrow);
 }
 
 void WeatheredLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label)
 {
-    label.setBounds(8, 1, box.getWidth() - 24, box.getHeight() - 2);
-    label.setFont(juce::FontOptions(14.0f).withStyle("Bold"));
+    const auto visualScale = juce::jlimit(0.72f, 1.0f, static_cast<float>(box.getHeight()) / 28.0f);
+    label.setBounds(juce::roundToInt(8.0f * visualScale), 1, box.getWidth() - juce::roundToInt(24.0f * visualScale), box.getHeight() - 2);
+    label.setFont(juce::FontOptions(14.0f * visualScale).withStyle("Bold"));
     label.setJustificationType(juce::Justification::centredLeft);
 }
 } // namespace compressor808bytes
