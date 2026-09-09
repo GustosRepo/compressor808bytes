@@ -114,6 +114,35 @@ void WeatheredLookAndFeel::drawToggleButton(juce::Graphics& graphics, juce::Togg
     graphics.drawText(button.getButtonText().toUpperCase(), bounds.withTrimmedTop(lampSize + 12.0f).toNearestInt(), juce::Justification::centred);
 }
 
+void WeatheredLookAndFeel::drawButtonBackground(juce::Graphics& graphics, juce::Button& button, const juce::Colour& backgroundColour,
+                                                bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
+{
+    const auto bounds = button.getLocalBounds().toFloat().reduced(0.5f);
+    const auto scale = juce::jlimit(0.72f, 1.0f, std::min(bounds.getWidth() / 36.0f, bounds.getHeight() / 30.0f));
+    const auto corner = 6.0f * scale;
+    const auto isOn = button.getToggleState();
+
+    graphics.setColour(juce::Colour::fromRGB(3, 3, 3).withAlpha(0.52f));
+    graphics.fillRoundedRectangle(bounds.translated(1.0f * scale, 2.0f * scale), corner);
+    graphics.setColour(isOn ? button.findColour(juce::TextButton::buttonOnColourId) : backgroundColour);
+    graphics.fillRoundedRectangle(bounds, corner);
+    graphics.setColour(juce::Colours::white.withAlpha(isOn ? 0.11f : shouldDrawButtonAsHighlighted ? 0.08f : 0.035f));
+    graphics.fillRoundedRectangle(bounds.withTrimmedBottom(bounds.getHeight() * 0.55f), corner);
+    graphics.setColour((shouldDrawButtonAsDown || isOn) ? juce::Colour::fromRGB(227, 122, 62) : juce::Colour::fromRGB(75, 63, 44));
+    graphics.drawRoundedRectangle(bounds, corner, 1.4f * scale);
+}
+
+void WeatheredLookAndFeel::drawButtonText(juce::Graphics& graphics, juce::TextButton& button, bool, bool)
+{
+    const auto bounds = button.getLocalBounds().reduced(1);
+    const auto text = button.getButtonText().toUpperCase();
+    const auto fontSize = text.length() > 2 ? 13.0f : 17.0f;
+
+    graphics.setColour(button.findColour(button.getToggleState() ? juce::TextButton::textColourOnId : juce::TextButton::textColourOffId));
+    graphics.setFont(juce::FontOptions(juce::jmin(fontSize, static_cast<float>(bounds.getHeight()) * 0.58f)).withStyle("Bold"));
+    graphics.drawFittedText(text, bounds, juce::Justification::centred, 1, 0.82f);
+}
+
 void WeatheredLookAndFeel::drawComboBox(juce::Graphics& graphics, int width, int height, bool isButtonDown,
                                         int buttonX, int buttonY, int buttonW, int buttonH, juce::ComboBox& box)
 {

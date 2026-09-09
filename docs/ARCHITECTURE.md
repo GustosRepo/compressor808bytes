@@ -12,6 +12,12 @@ The detector sidechain is high-pass filtered before level detection only. The au
 
 The Deluxe detector mode is interpreted as `Vintage` or `Fast`. Both modes remain peak-led; `Fast` uses a stronger peak blend and quicker transient capture. The character stage provides `Transformer` and `FET Push` drive colors using asymmetric tanh shaping after gain reduction. This is still an inspired digital model, not a component-level recreation of a specific hardware unit.
 
+The center meter follows a 1176-style workflow with editor-local `GR`, `+4`, and `+8` modes. `GR` displays gain reduction on a reversed 0 to 20 dB scale. `+4` and `+8` display output level on a VU-style -20 to +3 scale using fixed digital calibration offsets for practical plugin metering.
+
+## UI Layout
+
+The editor uses a fixed 1120x760 hardware canvas and scales it uniformly into the host-provided editor bounds. Resizing preserves the canvas aspect ratio through the JUCE editor constrainer; if a host ignores that ratio, the canvas is centered with unused margin instead of stretching controls independently. This keeps the 76-style meter, knobs, ratio buttons, and bottom rail in stable proportions across window sizes.
+
 ## Parameters
 
 Stable IDs: `input`, `threshold`, `ratio`, `attack`, `release`, `makeup`, `mix`, `output`, `knee`, `sidechainHPF`, `detectorMode`, `autoGain`, `character`, `oversampling`, `bypass`.

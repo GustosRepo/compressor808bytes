@@ -54,6 +54,7 @@ public:
 
 private:
     void updateSmoothers();
+    void sanitizeParameterState();
     static float bufferPeakDb(const juce::AudioBuffer<float>& buffer) noexcept;
 
     CompressorEngine compressor;

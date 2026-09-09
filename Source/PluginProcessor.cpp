@@ -98,6 +98,36 @@ void CompressorAudioProcessor::updateSmoothers()
     sidechainHighPassHz.setTargetValue(target("sidechainHPF")); bypass.setTargetValue(target("bypass"));
 }
 
+void CompressorAudioProcessor::sanitizeParameterState()
+{
+    const auto clampFloat = [this] (const char* id, float minimum, float maximum)
+    {
+        const auto rawValue = parameters.getRawParameterValue(id)->load();
+        const auto clampedValue = juce::jlimit(minimum, maximum, rawValue);
+        if (std::abs(rawValue - clampedValue) < 0.0001f)
+            return;
+
+        if (auto* parameter = parameters.getParameter(id))
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(clampedValue));
+    };
+
+    clampFloat("input", -24.0f, 24.0f);
+    clampFloat("threshold", -60.0f, 0.0f);
+    clampFloat("attack", 0.02f, 0.8f);
+    clampFloat("release", 50.0f, 1100.0f);
+    clampFloat("makeup", -12.0f, 24.0f);
+    clampFloat("mix", 0.0f, 100.0f);
+    clampFloat("output", -24.0f, 12.0f);
+    clampFloat("knee", 0.0f, 8.0f);
+    clampFloat("sidechainHPF", 20.0f, 500.0f);
+
+    if (auto* ratioParameter = parameters.getParameter("ratio"))
+    {
+        const auto snappedRatio = nearestFetRatio(parameters.getRawParameterValue("ratio")->load());
+        ratioParameter->setValueNotifyingHost(ratioParameter->convertTo0to1(snappedRatio));
+    }
+}
+
 float CompressorAudioProcessor::bufferPeakDb(const juce::AudioBuffer<float>& buffer) noexcept
 {
     return juce::Decibels::gainToDecibels(std::max(buffer.getMagnitude(0, buffer.getNumSamples()), 1.0e-5f), -100.0f);
@@ -156,7 +186,11 @@ void CompressorAudioProcessor::getStateInformation(juce::MemoryBlock& destinatio
 void CompressorAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary(data, sizeInBytes); xml != nullptr && xml->hasTagName(parameters.state.getType()))
+    {
         parameters.replaceState(juce::ValueTree::fromXml(*xml));
+        sanitizeParameterState();
+        updateSmoothers();
+    }
 }
 } // namespace compressor808bytes
 

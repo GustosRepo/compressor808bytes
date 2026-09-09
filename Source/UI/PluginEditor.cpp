@@ -21,9 +21,50 @@ constexpr std::array<RatioButtonSpec, 5> ratioButtonSpecs {{
     { "ALL", 21.0f }
 }};
 
+struct MeterModeButtonSpec
+{
+    const char* text;
+    MeterMode mode;
+};
+
+constexpr std::array<MeterModeButtonSpec, 3> meterModeButtonSpecs {{
+    { "GR", MeterMode::GainReduction },
+    { "+4", MeterMode::OutputPlus4 },
+    { "+8", MeterMode::OutputPlus8 }
+}};
+
+constexpr float designWidth = 1120.0f;
+constexpr float designHeight = 760.0f;
+constexpr float designAspectRatio = designWidth / designHeight;
+constexpr int defaultEditorWidth = 820;
+constexpr int defaultEditorHeight = static_cast<int>(static_cast<float>(defaultEditorWidth) / designAspectRatio + 0.5f);
+constexpr int minimumEditorWidth = 820;
+constexpr int minimumEditorHeight = static_cast<int>(static_cast<float>(minimumEditorWidth) / designAspectRatio + 0.5f);
+constexpr int maximumEditorWidth = 1500;
+constexpr int maximumEditorHeight = static_cast<int>(static_cast<float>(maximumEditorWidth) / designAspectRatio + 0.5f);
+
 float editorScaleFor(int width, int height) noexcept
 {
-    return juce::jlimit(0.62f, 1.0f, std::min(static_cast<float>(width) / 1120.0f, static_cast<float>(height) / 760.0f));
+    if (width <= 0 || height <= 0)
+        return 1.0f;
+
+    return std::min(static_cast<float>(width) / designWidth, static_cast<float>(height) / designHeight);
+}
+
+juce::Rectangle<float> visualCanvasFor(juce::Rectangle<int> editorBounds) noexcept
+{
+    const auto scale = editorScaleFor(editorBounds.getWidth(), editorBounds.getHeight());
+    return juce::Rectangle<float>(designWidth * scale, designHeight * scale).withCentre(editorBounds.toFloat().getCentre());
+}
+
+juce::Rectangle<int> designToEditorBounds(juce::Rectangle<float> canvas, juce::Rectangle<float> designBounds) noexcept
+{
+    const auto scale = canvas.getWidth() / designWidth;
+    return juce::Rectangle<float>(canvas.getX() + designBounds.getX() * scale,
+                                  canvas.getY() + designBounds.getY() * scale,
+                                  designBounds.getWidth() * scale,
+                                  designBounds.getHeight() * scale)
+        .toNearestInt();
 }
 
 float nearestRatioButtonValue(float value) noexcept
@@ -92,33 +133,6 @@ void drawAgeMarks(juce::Graphics& graphics, juce::Rectangle<float> area, float s
     }
 }
 
-void drawEdgeWear(juce::Graphics& graphics, juce::Rectangle<float> area, float scale)
-{
-    graphics.setColour(juce::Colour::fromRGB(24, 19, 14).withAlpha(0.23f));
-    graphics.fillRect(area.withTrimmedBottom(area.getHeight() - 26.0f * scale));
-    graphics.fillRect(area.withTrimmedTop(area.getHeight() - 28.0f * scale));
-    graphics.fillRect(area.withTrimmedRight(area.getWidth() - 24.0f * scale));
-    graphics.fillRect(area.withTrimmedLeft(area.getWidth() - 24.0f * scale));
-
-    for (int chip = 0; chip < 54; ++chip)
-    {
-        const auto horizontal = chip % 2 == 0;
-        const auto x = horizontal
-            ? area.getX() + static_cast<float>((chip * 83) % juce::jmax(1, static_cast<int>(area.getWidth())))
-            : (chip % 4 == 1 ? area.getX() + 3.0f * scale : area.getRight() - 15.0f * scale);
-        const auto y = horizontal
-            ? (chip % 4 == 0 ? area.getY() + 3.0f * scale : area.getBottom() - 12.0f * scale)
-            : area.getY() + static_cast<float>((chip * 67) % juce::jmax(1, static_cast<int>(area.getHeight())));
-        const auto width = (horizontal ? 11.0f + static_cast<float>((chip * 5) % 25) : 8.0f + static_cast<float>((chip * 3) % 9)) * scale;
-        const auto height = (horizontal ? 5.0f + static_cast<float>((chip * 7) % 7) : 12.0f + static_cast<float>((chip * 5) % 19)) * scale;
-
-        graphics.setColour(juce::Colour::fromRGB(34, 27, 20).withAlpha(0.42f));
-        graphics.fillRoundedRectangle(x, y, width, height, 2.0f * scale);
-        graphics.setColour(juce::Colour::fromRGB(211, 197, 163).withAlpha(0.13f));
-        graphics.drawLine(x + 1.0f * scale, y + 1.0f * scale, x + width - 2.0f * scale, y + 1.0f * scale, 0.65f * scale);
-    }
-}
-
 void drawGrimeAround(juce::Graphics& graphics, juce::Point<float> centre, float radius, float intensity)
 {
     graphics.setColour(juce::Colour::fromRGB(31, 22, 14).withAlpha(0.13f * intensity));
@@ -154,11 +168,14 @@ void drawBottomRailGrime(juce::Graphics& graphics, juce::Rectangle<float> rail, 
 } // namespace
 
 CompressorAudioProcessorEditor::CompressorAudioProcessorEditor(CompressorAudioProcessor& p)
-    : AudioProcessorEditor(&p), audioProcessor(p), inputMeter("IN", audioProcessor.getInputLevelSource()), outputMeter("OUT", audioProcessor.getOutputLevelSource()), reductionMeter("GR", audioProcessor.getGainReductionSource(), true)
+    : AudioProcessorEditor(&p), audioProcessor(p), inputMeter("IN", audioProcessor.getInputLevelSource()), outputMeter("OUT", audioProcessor.getOutputLevelSource()), reductionMeter("VU", audioProcessor.getInputLevelSource(), audioProcessor.getOutputLevelSource(), audioProcessor.getGainReductionSource())
 {
     setLookAndFeel(&weatheredLookAndFeel);
     setResizable(true, true);
-    setResizeLimits(680, 440, 1500, 980);
+    setResizeLimits(minimumEditorWidth, minimumEditorHeight, maximumEditorWidth, maximumEditorHeight);
+    if (auto* constrainer = getConstrainer())
+        constrainer->setFixedAspectRatio(designAspectRatio);
+
     configureChoiceControl(detectorModeLabel, detectorMode, "Detector", { "Vintage", "Fast" });
     configureChoiceControl(characterLabel, character, "Character", { "Clean", "Transformer", "FET Push" });
     configureChoiceControl(oversamplingLabel, oversampling, "Oversamp", { "Off", "2x", "4x" });
@@ -176,6 +193,18 @@ CompressorAudioProcessorEditor::CompressorAudioProcessorEditor(CompressorAudioPr
     {
         configureRatioButton(ratioButtons[index], ratioButtonSpecs[index].text, ratioButtonSpecs[index].value);
         addAndMakeVisible(ratioButtons[index]);
+    }
+
+    for (size_t index = 0; index < meterModeButtons.size(); ++index)
+    {
+        meterModeButtons[index].setButtonText(meterModeButtonSpecs[index].text);
+        meterModeButtons[index].setClickingTogglesState(false);
+        meterModeButtons[index].setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(13, 12, 10));
+        meterModeButtons[index].setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(152, 42, 24));
+        meterModeButtons[index].setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(184, 164, 123));
+        meterModeButtons[index].setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(245, 218, 151));
+        meterModeButtons[index].onClick = [this, index] { setMeterMode(meterModeButtonSpecs[index].mode); };
+        addAndMakeVisible(meterModeButtons[index]);
     }
 
     if (audioProcessor.getTier() == PluginTier::Deluxe)
@@ -207,8 +236,9 @@ CompressorAudioProcessorEditor::CompressorAudioProcessorEditor(CompressorAudioPr
     characterAttachment = std::make_unique<ComboAttachment>(state, "character", character);
     oversamplingAttachment = std::make_unique<ComboAttachment>(state, "oversampling", oversampling);
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(state, "bypass", bypass);
+    setMeterMode(MeterMode::GainReduction);
     updateRatioButtons();
-    setSize(820, 540);
+    setSize(defaultEditorWidth, defaultEditorHeight);
     startTimerHz(30);
 }
 CompressorAudioProcessorEditor::~CompressorAudioProcessorEditor() { setLookAndFeel(nullptr); }
@@ -254,7 +284,7 @@ void CompressorAudioProcessorEditor::layoutRatioButtons(juce::Rectangle<int> bou
     ratioLabel.setBounds(bounds.removeFromTop(labelHeight));
     bounds.removeFromTop(juce::jlimit(4, 8, bounds.getHeight() / 12));
 
-    const auto gap = juce::jlimit(3, 6, bounds.getWidth() / 36);
+    const auto gap = juce::jlimit(3, 5, bounds.getWidth() / 52);
     const auto buttonHeight = juce::jlimit(24, 34, bounds.getHeight() / 2);
     auto buttonRow = bounds.withHeight(buttonHeight).withCentre({ bounds.getCentreX(), bounds.getCentreY() });
     const auto buttonWidth = (buttonRow.getWidth() - gap * static_cast<int>(ratioButtons.size() - 1)) / static_cast<int>(ratioButtons.size());
@@ -263,6 +293,18 @@ void CompressorAudioProcessorEditor::layoutRatioButtons(juce::Rectangle<int> bou
     {
         button.setBounds(buttonRow.removeFromLeft(buttonWidth));
         buttonRow.removeFromLeft(gap);
+    }
+}
+
+void CompressorAudioProcessorEditor::layoutMeterModeButtons(juce::Rectangle<int> bounds)
+{
+    const auto gap = juce::jlimit(4, 7, bounds.getWidth() / 28);
+    const auto buttonWidth = (bounds.getWidth() - gap * static_cast<int>(meterModeButtons.size() - 1)) / static_cast<int>(meterModeButtons.size());
+
+    for (auto& button : meterModeButtons)
+    {
+        button.setBounds(bounds.removeFromLeft(buttonWidth));
+        bounds.removeFromLeft(gap);
     }
 }
 
@@ -276,6 +318,19 @@ void CompressorAudioProcessorEditor::setRatioFromButton(float ratioValue)
     }
 
     updateRatioButtons();
+}
+
+void CompressorAudioProcessorEditor::setMeterMode(MeterMode newMode)
+{
+    meterMode = newMode;
+    reductionMeter.setMeterMode(meterMode);
+    updateMeterModeButtons();
+}
+
+void CompressorAudioProcessorEditor::updateMeterModeButtons()
+{
+    for (size_t index = 0; index < meterModeButtons.size(); ++index)
+        meterModeButtons[index].setToggleState(meterModeButtonSpecs[index].mode == meterMode, juce::dontSendNotification);
 }
 
 void CompressorAudioProcessorEditor::updateRatioButtons()
@@ -301,7 +356,7 @@ void CompressorAudioProcessorEditor::applyControlHierarchy()
 void CompressorAudioProcessorEditor::paint(juce::Graphics& g)
 {
     const auto scale = editorScaleFor(getWidth(), getHeight());
-    const auto bounds = getLocalBounds().toFloat();
+    const auto bounds = visualCanvasFor(getLocalBounds());
     const auto panelInset = 18.0f * scale;
     auto panel = bounds.reduced(panelInset);
     const auto fullPanel = panel;
@@ -315,7 +370,6 @@ void CompressorAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(juce::Colour::fromRGB(188, 181, 162));
     g.fillRoundedRectangle(fullPanel, 6.0f * scale);
     drawAgeMarks(g, fullPanel, scale);
-    drawEdgeWear(g, fullPanel, scale);
 
     g.setColour(juce::Colour::fromRGB(17, 16, 14));
     g.fillRect(bottomRail);
@@ -394,36 +448,43 @@ void CompressorAudioProcessorEditor::paint(juce::Graphics& g)
 }
 void CompressorAudioProcessorEditor::resized()
 {
-    const auto width = getWidth();
-    const auto height = getHeight();
-    const auto scale = editorScaleFor(width, height);
-    const auto panelInset = juce::roundToInt(18.0f * scale);
-    const auto bottomRailHeight = juce::roundToInt(92.0f * scale);
-    auto fullPanel = getLocalBounds().reduced(panelInset);
+    const auto canvas = visualCanvasFor(getLocalBounds());
+    const auto scale = canvas.getWidth() / designWidth;
+    const auto labelScale = juce::jlimit(0.72f, 1.34f, scale);
+    ratioLabel.setFont(juce::FontOptions(12.5f * labelScale).withStyle("Bold"));
+
+    for (auto* label : { &detectorModeLabel, &characterLabel, &oversamplingLabel })
+        label->setFont(juce::FontOptions(12.0f * labelScale).withStyle("Bold"));
+
+    const auto designCanvas = juce::Rectangle<float>(designWidth, designHeight);
+    const auto fullPanel = designCanvas.reduced(18.0f);
     auto body = fullPanel;
-    body.removeFromBottom(bottomRailHeight);
-    const auto bottomRail = fullPanel.withTrimmedTop(fullPanel.getHeight() - bottomRailHeight);
+    body.removeFromBottom(92.0f);
+    const auto bottomRail = fullPanel.withTrimmedTop(fullPanel.getHeight() - 92.0f);
+    const auto toEditorBounds = [&canvas] (juce::Rectangle<float> designBounds)
+    {
+        return designToEditorBounds(canvas, designBounds);
+    };
 
-    const auto meterWidth = juce::jlimit(230, 430, juce::roundToInt(static_cast<float>(body.getWidth()) * 0.42f));
-    const auto meterHeight = juce::jlimit(96, 160, juce::roundToInt(160.0f * scale));
-    reductionMeter.setBounds(width / 2 - meterWidth / 2, body.getY() + juce::roundToInt(42.0f * scale), meterWidth, meterHeight);
-    const auto levelMeterWidth = juce::jlimit(34, 54, juce::roundToInt(54.0f * scale));
-    const auto levelMeterGap = juce::jlimit(10, 18, juce::roundToInt(18.0f * scale));
-    inputMeter.setBounds(reductionMeter.getX() - levelMeterGap - levelMeterWidth, reductionMeter.getY(), levelMeterWidth, reductionMeter.getHeight());
-    outputMeter.setBounds(reductionMeter.getRight() + levelMeterGap, reductionMeter.getY(), levelMeterWidth, reductionMeter.getHeight());
-    const auto bypassSize = juce::jlimit(56, 92, juce::roundToInt(92.0f * scale));
-    bypass.setBounds(fullPanel.getRight() - juce::roundToInt(116.0f * scale) - bypassSize / 2,
-                     body.getY() + juce::roundToInt(66.0f * scale), bypassSize, bypassSize);
+    const auto meterBounds = juce::Rectangle<float>(430.0f, 160.0f).withCentre({ designWidth * 0.5f, body.getY() + 122.0f });
+    reductionMeter.setBounds(toEditorBounds(meterBounds));
+    layoutMeterModeButtons(toEditorBounds(juce::Rectangle<float>(176.0f, 32.0f).withCentre({ meterBounds.getCentreX(), meterBounds.getBottom() + 16.0f })));
 
-    const auto smallWidth = juce::jlimit(74, 132, body.getWidth() / (audioProcessor.getTier() == PluginTier::Deluxe ? 7 : 6));
-    const auto smallHeight = juce::jlimit(88, 146, juce::roundToInt(static_cast<float>(height) * 0.19f));
-    const auto smallY = body.getBottom() - smallHeight - juce::roundToInt(14.0f * scale);
-    const auto meterBottom = reductionMeter.getBottom();
-    const auto mediumWidth = juce::jlimit(96, 162, juce::roundToInt(static_cast<float>(body.getWidth()) * 0.145f));
-    const auto mediumHeight = juce::jlimit(108, 174, smallY - meterBottom - juce::roundToInt(40.0f * scale));
-    const auto largeWidth = juce::jlimit(138, 226, juce::roundToInt(static_cast<float>(body.getWidth()) * 0.24f));
-    const auto largeHeight = juce::jlimit(126, 236, smallY - meterBottom - juce::roundToInt(18.0f * scale));
-    const auto largeY = meterBottom + juce::roundToInt(18.0f * scale);
+    constexpr auto levelMeterWidth = 54.0f;
+    constexpr auto levelMeterGap = 18.0f;
+    inputMeter.setBounds(toEditorBounds({ meterBounds.getX() - levelMeterGap - levelMeterWidth, meterBounds.getY(), levelMeterWidth, meterBounds.getHeight() }));
+    outputMeter.setBounds(toEditorBounds({ meterBounds.getRight() + levelMeterGap, meterBounds.getY(), levelMeterWidth, meterBounds.getHeight() }));
+    bypass.setBounds(toEditorBounds(juce::Rectangle<float>(92.0f, 92.0f).withCentre({ fullPanel.getRight() - 116.0f, body.getY() + 112.0f })));
+
+    constexpr auto smallWidth = 132.0f;
+    constexpr auto smallHeight = 144.0f;
+    constexpr auto mediumWidth = 157.0f;
+    constexpr auto mediumHeight = 174.0f;
+    constexpr auto largeWidth = 226.0f;
+    constexpr auto largeHeight = 236.0f;
+    const auto smallY = body.getBottom() - smallHeight - 14.0f;
+    const auto largeY = meterBounds.getBottom() + 18.0f;
+    const auto mediumY = largeY + (largeHeight - mediumHeight) * 0.5f;
 
     const std::array<std::pair<KnobComponent*, float>, 2> dominantControls {{
         { &threshold, 0.34f },
@@ -432,68 +493,58 @@ void CompressorAudioProcessorEditor::resized()
 
     for (const auto& [control, xRatio] : dominantControls)
     {
-        const auto centreX = body.getX() + juce::roundToInt(static_cast<float>(body.getWidth()) * xRatio);
-        control->setBounds(juce::Rectangle<int>(largeWidth, largeHeight).withCentre({ centreX, largeY + largeHeight / 2 }));
+        const auto centreX = body.getX() + body.getWidth() * xRatio;
+        control->setBounds(toEditorBounds(juce::Rectangle<float>(largeWidth, largeHeight).withCentre({ centreX, largeY + largeHeight * 0.5f })));
     }
 
-    const auto mediumY = largeY + (largeHeight - mediumHeight) / 2;
-    input.setBounds(juce::Rectangle<int>(mediumWidth, mediumHeight).withCentre({ body.getX() + juce::roundToInt(static_cast<float>(body.getWidth()) * 0.13f), mediumY + mediumHeight / 2 }));
-    output.setBounds(juce::Rectangle<int>(mediumWidth, mediumHeight).withCentre({ body.getX() + juce::roundToInt(static_cast<float>(body.getWidth()) * 0.87f), mediumY + mediumHeight / 2 }));
+    input.setBounds(toEditorBounds(juce::Rectangle<float>(mediumWidth, mediumHeight).withCentre({ body.getX() + body.getWidth() * 0.13f, mediumY + mediumHeight * 0.5f })));
+    output.setBounds(toEditorBounds(juce::Rectangle<float>(mediumWidth, mediumHeight).withCentre({ body.getX() + body.getWidth() * 0.87f, mediumY + mediumHeight * 0.5f })));
 
-    const auto layoutSecondaryControl = [&body, smallWidth, smallHeight, smallY] (KnobComponent& control, float xRatio)
+    const auto layoutSecondaryControl = [&body, &toEditorBounds, smallY] (KnobComponent& control, float xRatio)
     {
-        const auto centreX = body.getX() + juce::roundToInt(static_cast<float>(body.getWidth()) * xRatio);
-        control.setBounds(juce::Rectangle<int>(smallWidth, smallHeight).withCentre({ centreX, smallY + smallHeight / 2 }));
+        const auto centreX = body.getX() + body.getWidth() * xRatio;
+        control.setBounds(toEditorBounds(juce::Rectangle<float>(smallWidth, smallHeight).withCentre({ centreX, smallY + smallHeight * 0.5f })));
     };
 
     if (audioProcessor.getTier() == PluginTier::Deluxe)
     {
-        const auto ratioBankWidth = juce::jlimit(144, 196, juce::roundToInt(static_cast<float>(body.getWidth()) * 0.18f));
-        const auto ratioBankHeight = juce::jlimit(72, 102, smallHeight);
-        layoutRatioButtons(juce::Rectangle<int>(ratioBankWidth, ratioBankHeight).withCentre({
-            body.getX() + juce::roundToInt(static_cast<float>(body.getWidth()) * 0.115f),
-            smallY + smallHeight / 2
-        }));
+        layoutRatioButtons(toEditorBounds(juce::Rectangle<float>(260.0f, 102.0f).withCentre({
+            body.getX() + body.getWidth() * 0.16f,
+            smallY + smallHeight * 0.5f
+        })));
 
         const std::array<std::pair<KnobComponent*, float>, 5> secondaryControls {{
-            { &attack, 0.29f },
-            { &release, 0.43f },
-            { &mix, 0.57f },
-            { &knee, 0.71f },
-            { &sidechainHighPass, 0.85f }
+            { &attack, 0.36f },
+            { &release, 0.49f },
+            { &mix, 0.62f },
+            { &knee, 0.74f },
+            { &sidechainHighPass, 0.86f }
         }};
 
         for (const auto& [control, xRatio] : secondaryControls)
             layoutSecondaryControl(*control, xRatio);
 
-        const auto compactRail = bottomRail.getWidth() < 760;
-        const auto selectorWidth = compactRail
-            ? juce::jlimit(86, 118, (bottomRail.getWidth() - juce::roundToInt(84.0f * scale)) / 3)
-            : juce::jlimit(68, 104, juce::roundToInt(static_cast<float>(fullPanel.getWidth()) * 0.105f));
-        const auto selectorGap = juce::jlimit(7, 10, juce::roundToInt(10.0f * scale));
+        constexpr auto selectorWidth = 104.0f;
+        constexpr auto selectorGap = 10.0f;
         const auto selectorGroupWidth = selectorWidth * 3 + selectorGap * 2;
-        const auto selectorHeight = juce::jlimit(42, 52, juce::roundToInt(52.0f * scale));
-        const auto selectorX = compactRail
-            ? bottomRail.getCentreX() - selectorGroupWidth / 2
-            : fullPanel.getRight() - juce::roundToInt(30.0f * scale) - selectorGroupWidth;
-        const auto selectorY = fullPanel.getBottom() - selectorHeight - juce::roundToInt(12.0f * scale);
-        layoutChoiceControl(detectorModeLabel, detectorMode, { selectorX, selectorY, selectorWidth, selectorHeight });
-        layoutChoiceControl(characterLabel, character, { selectorX + selectorWidth + selectorGap, selectorY, selectorWidth, selectorHeight });
-        layoutChoiceControl(oversamplingLabel, oversampling, { selectorX + (selectorWidth + selectorGap) * 2, selectorY, selectorWidth, selectorHeight });
+        constexpr auto selectorHeight = 52.0f;
+        const auto selectorX = fullPanel.getRight() - 30.0f - selectorGroupWidth;
+        const auto selectorY = bottomRail.getBottom() - selectorHeight - 12.0f;
+        layoutChoiceControl(detectorModeLabel, detectorMode, toEditorBounds({ selectorX, selectorY, selectorWidth, selectorHeight }));
+        layoutChoiceControl(characterLabel, character, toEditorBounds({ selectorX + selectorWidth + selectorGap, selectorY, selectorWidth, selectorHeight }));
+        layoutChoiceControl(oversamplingLabel, oversampling, toEditorBounds({ selectorX + (selectorWidth + selectorGap) * 2.0f, selectorY, selectorWidth, selectorHeight }));
     }
     else
     {
-        const auto ratioBankWidth = juce::jlimit(150, 210, juce::roundToInt(static_cast<float>(body.getWidth()) * 0.24f));
-        const auto ratioBankHeight = juce::jlimit(72, 102, smallHeight);
-        layoutRatioButtons(juce::Rectangle<int>(ratioBankWidth, ratioBankHeight).withCentre({
-            body.getX() + juce::roundToInt(static_cast<float>(body.getWidth()) * 0.23f),
-            smallY + smallHeight / 2
-        }));
+        layoutRatioButtons(toEditorBounds(juce::Rectangle<float>(260.0f, 102.0f).withCentre({
+            body.getX() + body.getWidth() * 0.25f,
+            smallY + smallHeight * 0.5f
+        })));
 
         const std::array<std::pair<KnobComponent*, float>, 3> secondaryControls {{
-            { &attack, 0.45f },
-            { &release, 0.62f },
-            { &mix, 0.79f }
+            { &attack, 0.49f },
+            { &release, 0.65f },
+            { &mix, 0.81f }
         }};
 
         for (const auto& [control, xRatio] : secondaryControls)
@@ -506,5 +557,6 @@ void CompressorAudioProcessorEditor::timerCallback()
     outputMeter.repaint();
     reductionMeter.repaint();
     updateRatioButtons();
+    updateMeterModeButtons();
 }
 } // namespace compressor808bytes

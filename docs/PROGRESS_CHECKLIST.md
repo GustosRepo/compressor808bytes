@@ -22,6 +22,8 @@
 - [x] Limit knee range for harder FET gain reduction
 - [x] Add aggressive all-buttons-style gain curve
 - [x] Add stepped ratio-button UI for 4:1, 8:1, 12:1, 20:1, and All
+- [x] Add 1176-style center meter modes for GR, +4 output, and +8 output
+- [x] Lock the editor to a fixed-aspect hardware canvas with uniform scaling
 - [x] Rename character modes toward Transformer and FET Push
 - [x] Add DSP coverage for sparse transient detector behavior
 - [x] Add DSP coverage for separate 20:1 and all-buttons limiting behavior

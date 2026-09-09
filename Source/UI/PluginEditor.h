@@ -23,8 +23,11 @@ private:
     void configureRatioButton(juce::TextButton&, const juce::String& text, float ratioValue);
     void layoutChoiceControl(juce::Label&, juce::ComboBox&, juce::Rectangle<int>);
     void layoutRatioButtons(juce::Rectangle<int> bounds);
+    void layoutMeterModeButtons(juce::Rectangle<int> bounds);
     void setRatioFromButton(float ratioValue);
     void updateRatioButtons();
+    void setMeterMode(MeterMode newMode);
+    void updateMeterModeButtons();
     void timerCallback() override;
     CompressorAudioProcessor& audioProcessor;
     WeatheredLookAndFeel weatheredLookAndFeel;
@@ -33,6 +36,8 @@ private:
     juce::ToggleButton bypass { "Bypass" };
     juce::Label ratioLabel;
     std::array<juce::TextButton, 5> ratioButtons;
+    std::array<juce::TextButton, 3> meterModeButtons;
+    MeterMode meterMode { MeterMode::GainReduction };
     juce::Label detectorModeLabel, characterLabel, oversamplingLabel;
     juce::ComboBox detectorMode, character, oversampling;
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
