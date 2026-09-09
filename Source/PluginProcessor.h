@@ -5,6 +5,10 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#ifndef JucePlugin_Name
+#define JucePlugin_Name "808Bytes Compressor"
+#endif
+
 namespace compressor808bytes
 {
 enum class PluginTier { Lite, Deluxe };

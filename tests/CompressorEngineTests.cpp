@@ -1,5 +1,6 @@
 #include "DSP/CompressorEngine.h"
 #include "DSP/MeterBallistics.h"
+#include "PluginProcessor.h"
 
 #include <algorithm>
 #include <array>
@@ -63,6 +64,60 @@ float residualRms(const std::vector<float>& first, const std::vector<float>& sec
     return static_cast<float>(std::sqrt(sum / static_cast<double>(first.size())));
 }
 
+void setProcessorParameter(CompressorAudioProcessor& processor, const char* id, float value)
+{
+    if (auto* parameter = processor.parameters.getParameter(id))
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+}
+
+void setFetProcessorDefaults(CompressorAudioProcessor& processor)
+{
+    setProcessorParameter(processor, "input", 0.0f);
+    setProcessorParameter(processor, "threshold", -18.0f);
+    setProcessorParameter(processor, "ratio", 8.0f);
+    setProcessorParameter(processor, "attack", 0.05f);
+    setProcessorParameter(processor, "release", 220.0f);
+    setProcessorParameter(processor, "makeup", 0.0f);
+    setProcessorParameter(processor, "mix", 100.0f);
+    setProcessorParameter(processor, "output", 0.0f);
+    setProcessorParameter(processor, "knee", 1.5f);
+    setProcessorParameter(processor, "sidechainHPF", 30.0f);
+    setProcessorParameter(processor, "detectorMode", 1.0f);
+    setProcessorParameter(processor, "character", 0.0f);
+    setProcessorParameter(processor, "oversampling", 0.0f);
+    setProcessorParameter(processor, "bypass", 0.0f);
+}
+
+void fillProcessorTestSignal(juce::AudioBuffer<float>& buffer, float amplitude)
+{
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+    {
+        const auto value = sample % 2 == 0 ? amplitude : -amplitude;
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            buffer.setSample(channel, sample, value);
+    }
+}
+
+float peakMagnitude(const juce::AudioBuffer<float>& buffer)
+{
+    auto peak = 0.0f;
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        peak = std::max(peak, buffer.getMagnitude(channel, 0, buffer.getNumSamples()));
+
+    return peak;
+}
+
+void processRepeatedProcessorBlocks(CompressorAudioProcessor& processor, juce::AudioBuffer<float>& buffer,
+                                    float amplitude, int blocks)
+{
+    juce::MidiBuffer midi;
+    for (int block = 0; block < blocks; ++block)
+    {
+        fillProcessorTestSignal(buffer, amplitude);
+        processor.processBlock(buffer, midi);
+    }
+}
+
 void processSignal(CompressorEngine& engine, std::vector<float>& left, std::vector<float>& right, float amplitude, int passes)
 {
     float* channels[] { left.data(), right.data() };
@@ -116,8 +171,8 @@ bool testCompressionBehavior()
     processSignal(engine, left, right, 1.0f, 20);
     const auto compressedGainDb = gainToDecibels(left.back());
 
-    return check(approximatelyEqual(compressedGainDb, -15.0f), "4:1 ratio produces expected hard-knee reduction")
-        && check(approximatelyEqual(engine.getGainReductionDb(), 15.0f), "gain-reduction meter reports dB reduction");
+    return check(compressedGainDb < -14.0f && compressedGainDb > -18.0f, "feedback 4:1 ratio settles near the expected reduction curve")
+        && check(engine.getGainReductionDb() > 14.0f && engine.getGainReductionDb() < 19.0f, "gain-reduction meter reports settled feedback reduction");
 }
 
 bool testNoCompressionBelowThresholdAndUnityRatio()
@@ -296,6 +351,35 @@ bool testFetRatioExtremes()
         && check(allButtonsReductionDb > twentyToOneReductionDb + 0.5f, "all-buttons-style ratio is more aggressive than 20:1");
 }
 
+float settledReductionWithMakeup(float makeupDb)
+{
+    constexpr int blockSize = 512;
+    CompressorEngine engine;
+    engine.prepare(48000.0, blockSize, 2);
+    CompressorParameters parameters;
+    parameters.thresholdDb = -28.0f;
+    parameters.ratio = 8.0f;
+    parameters.attackMs = 0.05f;
+    parameters.releaseMs = 250.0f;
+    parameters.makeupDb = makeupDb;
+    parameters.detectorMode = 1;
+    engine.setParameters(parameters);
+
+    std::vector<float> left(blockSize, 0.0f);
+    std::vector<float> right(blockSize, 0.0f);
+    processSignal(engine, left, right, 0.65f, 18);
+    return engine.getGainReductionDb();
+}
+
+bool testOutputGainDoesNotDriveFeedbackSidechain()
+{
+    const auto unityMakeupReductionDb = settledReductionWithMakeup(0.0f);
+    const auto hotMakeupReductionDb = settledReductionWithMakeup(12.0f);
+
+    return check(std::abs(unityMakeupReductionDb - hotMakeupReductionDb) < 0.25f,
+                 "makeup/output gain does not drive the feedback sidechain");
+}
+
 bool testCharacterStageAndOversampling()
 {
     constexpr int blockSize = 2048;
@@ -382,10 +466,122 @@ bool testOversamplingModesAreFunctional()
         && check(peakMagnitude(outputs[1]) < 0.95f && peakMagnitude(outputs[2]) < 0.95f, "oversampled character remains bounded")
         && check(residualRms(outputs[0], outputs[1]) > 0.001f && residualRms(outputs[1], outputs[2]) > 0.0001f, "2x and 4x oversampling modes alter nonlinear processing");
 }
+
+float processorReductionForInputDrive(float inputDriveDb)
+{
+    constexpr int blockSize = 512;
+    CompressorAudioProcessor processor;
+    setFetProcessorDefaults(processor);
+    setProcessorParameter(processor, "input", inputDriveDb);
+    processor.prepareToPlay(48000.0, blockSize);
+
+    juce::AudioBuffer<float> buffer(2, blockSize);
+    processRepeatedProcessorBlocks(processor, buffer, 0.20f, 80);
+    return processor.getGainReductionDb();
+}
+
+bool testProcessorInputDrivesCompression()
+{
+    const auto lowDriveReductionDb = processorReductionForInputDrive(-12.0f);
+    const auto highDriveReductionDb = processorReductionForInputDrive(12.0f);
+
+    return check(highDriveReductionDb > lowDriveReductionDb + 6.0f, "processor input control drives more feedback compression");
+}
+
+bool testProcessorBypassReturnsDrySignal()
+{
+    constexpr int blockSize = 512;
+    constexpr auto amplitude = 0.25f;
+    CompressorAudioProcessor processor;
+    setFetProcessorDefaults(processor);
+    setProcessorParameter(processor, "bypass", 1.0f);
+    processor.prepareToPlay(48000.0, blockSize);
+
+    juce::AudioBuffer<float> buffer(2, blockSize);
+    processRepeatedProcessorBlocks(processor, buffer, amplitude, 100);
+
+    auto matchesDrySignal = true;
+    for (int sample = 0; sample < blockSize; ++sample)
+    {
+        const auto expected = sample % 2 == 0 ? amplitude : -amplitude;
+        matchesDrySignal = matchesDrySignal && approximatelyEqual(buffer.getSample(0, sample), expected, 0.0005f)
+                                      && approximatelyEqual(buffer.getSample(1, sample), expected, 0.0005f);
+    }
+
+    return check(matchesDrySignal, "processor bypass returns the dry signal when trims are neutral");
+}
+
+float processorPeakForMix(float mixPercent)
+{
+    constexpr int blockSize = 512;
+    CompressorAudioProcessor processor;
+    setFetProcessorDefaults(processor);
+    setProcessorParameter(processor, "input", 12.0f);
+    setProcessorParameter(processor, "mix", mixPercent);
+    processor.prepareToPlay(48000.0, blockSize);
+
+    juce::AudioBuffer<float> buffer(2, blockSize);
+    processRepeatedProcessorBlocks(processor, buffer, 0.20f, 90);
+    return peakMagnitude(buffer);
+}
+
+bool testProcessorMixBlendsDryAndWet()
+{
+    const auto dryPeak = processorPeakForMix(0.0f);
+    const auto halfPeak = processorPeakForMix(50.0f);
+    const auto wetPeak = processorPeakForMix(100.0f);
+
+    return check(wetPeak < halfPeak && halfPeak < dryPeak, "processor mix blends between compressed wet and driven dry paths");
+}
+
+float processorReductionForOutputSettings(float makeupDb, float outputDb)
+{
+    constexpr int blockSize = 512;
+    CompressorAudioProcessor processor;
+    setFetProcessorDefaults(processor);
+    setProcessorParameter(processor, "input", 12.0f);
+    setProcessorParameter(processor, "makeup", makeupDb);
+    setProcessorParameter(processor, "output", outputDb);
+    processor.prepareToPlay(48000.0, blockSize);
+
+    juce::AudioBuffer<float> buffer(2, blockSize);
+    processRepeatedProcessorBlocks(processor, buffer, 0.20f, 90);
+    return processor.getGainReductionDb();
+}
+
+bool testProcessorMakeupAndOutputDoNotDriveDetector()
+{
+    const auto neutralReductionDb = processorReductionForOutputSettings(0.0f, 0.0f);
+    const auto hotMakeupReductionDb = processorReductionForOutputSettings(12.0f, 0.0f);
+    const auto hotOutputReductionDb = processorReductionForOutputSettings(0.0f, 12.0f);
+
+    return check(std::abs(neutralReductionDb - hotMakeupReductionDb) < 0.35f
+                     && std::abs(neutralReductionDb - hotOutputReductionDb) < 0.35f,
+                 "processor makeup and output gain do not drive the feedback detector");
+}
+
+bool testProcessorMetersPublishUsefulValues()
+{
+    constexpr int blockSize = 512;
+    CompressorAudioProcessor processor;
+    setFetProcessorDefaults(processor);
+    setProcessorParameter(processor, "input", 12.0f);
+    setProcessorParameter(processor, "output", -3.0f);
+    processor.prepareToPlay(48000.0, blockSize);
+
+    juce::AudioBuffer<float> buffer(2, blockSize);
+    processRepeatedProcessorBlocks(processor, buffer, 0.20f, 90);
+
+    return check(processor.getGainReductionDb() > 3.0f, "processor publishes gain reduction meter value")
+        && check(std::isfinite(processor.getOutputLevelDb()) && processor.getOutputLevelDb() > -80.0f, "processor publishes output level meter value")
+        && check(std::isfinite(processor.getMeterGainChangeDb()), "processor publishes signed gain-change meter value");
+}
 } // namespace
 
 int main()
 {
+    juce::ScopedJuceInitialiser_GUI juceInitialiser;
+
     bool passed = true;
     for (const auto sampleRate : { 44100.0, 48000.0, 96000.0 })
         for (const auto blockSize : { 32, 64, 128, 256, 512, 1024 })
@@ -398,11 +594,17 @@ int main()
     passed = testHybridDetectorModes() && passed;
     passed = testProgramDependentRelease() && passed;
     passed = testFetRatioExtremes() && passed;
+    passed = testOutputGainDoesNotDriveFeedbackSidechain() && passed;
     passed = testCharacterStageAndOversampling() && passed;
     passed = testOversamplingModesAreFunctional() && passed;
+    passed = testProcessorInputDrivesCompression() && passed;
+    passed = testProcessorBypassReturnsDrySignal() && passed;
+    passed = testProcessorMixBlendsDryAndWet() && passed;
+    passed = testProcessorMakeupAndOutputDoNotDriveDetector() && passed;
+    passed = testProcessorMetersPublishUsefulValues() && passed;
 
     if (!passed)
         return 1;
 
-    std::cout << "Compressor DSP tests passed\n";
+    std::cout << "Compressor DSP and processor tests passed\n";
 }

@@ -54,11 +54,21 @@ if (COMPRESSOR808BYTES_BUILD_TESTS)
     enable_testing()
     add_executable(CompressorDSPTests
         tests/CompressorEngineTests.cpp
+        Source/PluginProcessor.cpp
         Source/DSP/CompressorEngine.cpp
         Source/DSP/EnvelopeDetector.cpp
         Source/DSP/Filters.cpp)
     target_compile_features(CompressorDSPTests PRIVATE cxx_std_20)
+    target_compile_definitions(CompressorDSPTests PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        COMPRESSOR808BYTES_PROCESSOR_TESTS=1
+        $<$<BOOL:${COMPRESSOR808BYTES_DELUXE}>:COMPRESSOR808BYTES_DELUXE=1>)
     target_include_directories(CompressorDSPTests PRIVATE Source)
-    target_link_libraries(CompressorDSPTests PRIVATE juce::juce_audio_basics juce::juce_dsp)
+    target_link_libraries(CompressorDSPTests PRIVATE
+        juce::juce_audio_processors
+        juce::juce_dsp
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
     add_test(NAME CompressorDSPTests COMMAND CompressorDSPTests)
 endif()

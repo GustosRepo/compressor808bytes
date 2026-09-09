@@ -13,6 +13,13 @@ struct KnobMark
     juce::String label;
 };
 
+struct ScaleStrip
+{
+    juce::String left;
+    juce::String centre;
+    juce::String right;
+};
+
 bool closeTo(float first, float second) noexcept
 {
     return std::abs(first - second) < 0.01f;
@@ -32,11 +39,11 @@ std::vector<KnobMark> marksForSlider(const juce::Slider& slider, const juce::Str
     if (unit == "Hz")
         return { { 20.0f, "20" }, { 60.0f, "60" }, { 120.0f, "120" }, { 500.0f, "500" } };
 
-    if (unit == "ms" && closeTo(minimum, 0.1f) && closeTo(maximum, 100.0f))
-        return { { 0.1f, "0.1" }, { 1.0f, "1" }, { 10.0f, "10" }, { 100.0f, "100" } };
+    if (unit == "ms" && maximum <= 1.0f)
+        return { { 0.02f, "0.02" }, { 0.2f, "0.2" }, { 0.5f, "0.5" }, { 0.8f, "0.8" } };
 
     if (unit == "ms")
-        return { { 10.0f, "10" }, { 100.0f, "100" }, { 500.0f, "500" }, { 2000.0f, "2K" } };
+        return { { 50.0f, "50" }, { 250.0f, "250" }, { 600.0f, "600" }, { 1100.0f, "1.1K" } };
 
     if (unit == "dB" && closeTo(minimum, -60.0f))
         return { { -60.0f, "-60" }, { -45.0f, "-45" }, { -30.0f, "-30" }, { -15.0f, "-15" }, { 0.0f, "0" } };
@@ -55,16 +62,43 @@ std::vector<KnobMark> marksForSlider(const juce::Slider& slider, const juce::Str
 
     return {};
 }
+
+ScaleStrip scaleStripForSlider(const juce::Slider& slider, const juce::String& unit, const juce::String& controlName)
+{
+    const auto minimum = static_cast<float>(slider.getMinimum());
+    const auto maximum = static_cast<float>(slider.getMaximum());
+
+    if (unit == "dB" && closeTo(minimum, -24.0f) && closeTo(maximum, 24.0f))
+        return { "-24", "0", "+24" };
+
+    if (unit == "ms" && maximum <= 1.0f)
+        return { "SLOW", {}, "FAST" };
+
+    if (unit == "ms")
+        return { "FAST", {}, "SLOW" };
+
+    if (unit == "%")
+        return { "0", {}, "100" };
+
+    if (unit == "Hz")
+        return { "20", {}, "500" };
+
+    if (unit == "dB" && controlName == "KNEE")
+        return { "0", {}, juce::String(juce::roundToInt(maximum)) };
+
+    return {};
+}
+
 } // namespace
 
 KnobComponent::KnobComponent(const juce::String& name, const juce::String& suffix)
-    : unit(suffix)
+    : controlName(name.toUpperCase()), unit(suffix)
 {
-    label.setText(name.toUpperCase(), juce::dontSendNotification);
+    label.setText(controlName, juce::dontSendNotification);
     label.setJustificationType(juce::Justification::centred);
     label.setFont(juce::FontOptions(14.0f).withStyle("Bold"));
     slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    slider.setRotaryParameters(juce::MathConstants<float>::pi * 1.20f, juce::MathConstants<float>::pi * 2.80f, true);
+    slider.setRotaryParameters(juce::MathConstants<float>::pi * 0.75f, juce::MathConstants<float>::pi * 2.25f, true);
     slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     slider.setTextValueSuffix(suffix == ":1" ? suffix : " " + suffix);
     slider.setNumDecimalPlacesToDisplay(suffix == "Hz" ? 0 : 1);
@@ -72,9 +106,11 @@ KnobComponent::KnobComponent(const juce::String& name, const juce::String& suffi
 
     value.setJustificationType(juce::Justification::centred);
     value.setInterceptsMouseClicks(false, false);
-    value.setColour(juce::Label::textColourId, juce::Colour::fromRGB(184, 164, 123));
-    value.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGB(8, 8, 7));
-    value.setColour(juce::Label::outlineColourId, juce::Colour::fromRGB(47, 40, 31));
+    label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(33, 37, 41));
+
+    value.setColour(juce::Label::textColourId, juce::Colour::fromRGB(229, 236, 233));
+    value.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGB(16, 19, 22));
+    value.setColour(juce::Label::outlineColourId, juce::Colour::fromRGB(72, 82, 88));
     value.setFont(juce::FontOptions(18.0f).withStyle("Bold"));
 
     addAndMakeVisible(label);
@@ -86,36 +122,55 @@ KnobComponent::KnobComponent(const juce::String& name, const juce::String& suffi
 void KnobComponent::paint(juce::Graphics& graphics)
 {
     const auto marks = marksForSlider(slider, unit);
-    if (marks.empty())
-        return;
-
     const auto knobArea = slider.getBounds().toFloat();
     const auto side = std::min(knobArea.getWidth(), knobArea.getHeight());
-    if (side < 54.0f)
+
+    if (!marks.empty() && side >= 44.0f)
+    {
+        const auto centre = knobArea.withSizeKeepingCentre(side, side).getCentre();
+        const auto radius = side * 0.39f;
+        const auto startAngle = juce::MathConstants<float>::pi * 0.75f;
+        const auto endAngle = juce::MathConstants<float>::pi * 2.25f;
+
+        graphics.setColour(juce::Colour::fromRGB(67, 75, 80).withAlpha(0.76f));
+
+        for (const auto& mark : marks)
+        {
+            if (mark.value < slider.getMinimum() || mark.value > slider.getMaximum())
+                continue;
+
+            const auto proportion = static_cast<float>(slider.valueToProportionOfLength(mark.value));
+            const auto angle = startAngle + proportion * (endAngle - startAngle);
+            const auto tickStart = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + 2.0f);
+            const auto tickEnd = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + (side > 74.0f ? 8.0f : 5.0f));
+
+            graphics.drawLine(tickStart.x, tickStart.y, tickEnd.x, tickEnd.y, closeTo(mark.value, 0.0f) ? 1.8f : 1.1f);
+        }
+    }
+
+    const auto scaleStrip = scaleStripForSlider(slider, unit, controlName);
+    if (scaleStrip.left.isEmpty() && scaleStrip.centre.isEmpty() && scaleStrip.right.isEmpty())
         return;
 
-    const auto centre = knobArea.withSizeKeepingCentre(side, side).getCentre();
-    const auto radius = side * 0.39f;
-    const auto startAngle = juce::MathConstants<float>::pi * 1.20f;
-    const auto endAngle = juce::MathConstants<float>::pi * 2.80f;
+    const auto valueBounds = value.getBounds().toFloat();
+    const auto stripHeight = juce::jlimit(10.0f, 15.0f, side * 0.11f);
+    const auto stripGap = juce::jmax(4.0f, side * 0.035f);
+    auto stripArea = valueBounds.withY(valueBounds.getY() - stripHeight - stripGap)
+                                    .withHeight(stripHeight)
+                                    .expanded(side >= 112.0f ? 22.0f : 12.0f, 0.0f);
+    stripArea = stripArea.getIntersection(getLocalBounds().toFloat().reduced(3.0f));
 
-    graphics.setColour(juce::Colour::fromRGB(28, 25, 20));
-    graphics.setFont(juce::FontOptions(side > 104.0f ? 12.0f : side > 74.0f ? 10.0f : 8.0f));
+    graphics.setFont(juce::FontOptions(juce::jlimit(7.5f, 10.5f, side * 0.085f)).withStyle("Bold"));
+    graphics.setColour(juce::Colour::fromRGB(58, 66, 71).withAlpha(0.88f));
 
-    for (const auto& mark : marks)
-    {
-        if (mark.value < slider.getMinimum() || mark.value > slider.getMaximum())
-            continue;
+    const auto third = stripArea.getWidth() / 3.0f;
+    auto leftArea = stripArea.removeFromLeft(third);
+    auto centreArea = stripArea.removeFromLeft(third);
+    auto rightArea = stripArea;
 
-        const auto proportion = static_cast<float>(slider.valueToProportionOfLength(mark.value));
-        const auto angle = startAngle + proportion * (endAngle - startAngle);
-        const auto tickStart = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + 2.0f);
-        const auto tickEnd = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + (side > 74.0f ? 9.0f : 6.0f));
-        const auto position = centre + juce::Point<float>(std::cos(angle), std::sin(angle)) * (radius + (side > 74.0f ? 21.0f : 14.0f));
-
-        graphics.drawLine(tickStart.x, tickStart.y, tickEnd.x, tickEnd.y, mark.value == 0.0f ? 1.8f : 1.1f);
-        graphics.drawText(mark.label, juce::Rectangle<float>(position.x - 20.0f, position.y - 8.0f, 40.0f, 16.0f), juce::Justification::centred);
-    }
+    graphics.drawFittedText(scaleStrip.left, leftArea.toNearestInt(), juce::Justification::centredLeft, 1);
+    graphics.drawFittedText(scaleStrip.centre, centreArea.toNearestInt(), juce::Justification::centred, 1);
+    graphics.drawFittedText(scaleStrip.right, rightArea.toNearestInt(), juce::Justification::centredRight, 1);
 }
 
 void KnobComponent::resized()

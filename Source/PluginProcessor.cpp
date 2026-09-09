@@ -1,5 +1,8 @@
 #include "PluginProcessor.h"
+
+#ifndef COMPRESSOR808BYTES_PROCESSOR_TESTS
 #include "UI/PluginEditor.h"
+#endif
 
 #include <algorithm>
 #include <array>
@@ -32,6 +35,13 @@ float nearestFetRatio(float value) noexcept
 
     return nearest;
 }
+
+float internalFetThresholdDb(float legacyThresholdDb) noexcept
+{
+    constexpr auto nominalThresholdDb = -24.0f;
+    const auto calibrationTrimDb = juce::jlimit(-4.0f, 4.0f, (legacyThresholdDb + 18.0f) * 0.16f);
+    return nominalThresholdDb + calibrationTrimDb;
+}
 } // namespace
 
 CompressorAudioProcessor::CompressorAudioProcessor()
@@ -45,25 +55,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
 {
     using Range = juce::NormalisableRange<float>;
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> layout;
-    const auto addFloat = [&layout] (const char* id, const char* name, Range range, float defaultValue, const char* label)
+    auto versionHint = 1;
+    const auto addFloat = [&layout, &versionHint] (const char* id, const char* name, Range range, float defaultValue, const char* label)
     {
-        layout.push_back(std::make_unique<juce::AudioParameterFloat>(id, name, range, defaultValue, parameterAttributes(label)));
+        layout.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID { id, versionHint++ }, name, range, defaultValue, parameterAttributes(label)));
     };
     addFloat("input", "Input", { -24.0f, 24.0f, 0.1f }, 0.0f, "dB");
-    addFloat("threshold", "Peak Reduction", { -60.0f, 0.0f, 0.1f }, -18.0f, "dB");
+    addFloat("threshold", "FET Calibration", { -60.0f, 0.0f, 0.1f }, -18.0f, "dB");
     addFloat("ratio", "Ratio", { 4.0f, 21.0f, 0.01f, 0.45f }, 4.0f, ":1");
     addFloat("attack", "Attack", { 0.02f, 0.8f, 0.001f, 0.45f }, 0.2f, "ms");
     addFloat("release", "Release", { 50.0f, 1100.0f, 0.1f, 0.45f }, 250.0f, "ms");
-    addFloat("makeup", "Makeup", { -12.0f, 24.0f, 0.1f }, 0.0f, "dB");
+    addFloat("makeup", "Output", { -24.0f, 24.0f, 0.1f }, 0.0f, "dB");
     addFloat("mix", "Mix", { 0.0f, 100.0f, 0.1f }, 100.0f, "%");
-    addFloat("output", "Output", { -24.0f, 12.0f, 0.1f }, 0.0f, "dB");
+    addFloat("output", "Output Trim", { -24.0f, 12.0f, 0.1f }, 0.0f, "dB");
     addFloat("knee", "Knee", { 0.0f, 8.0f, 0.1f }, 1.5f, "dB");
     addFloat("sidechainHPF", "Sidechain HPF", { 20.0f, 500.0f, 1.0f, 0.35f }, 30.0f, "Hz");
-    layout.push_back(std::make_unique<juce::AudioParameterChoice>("detectorMode", "Detector Mode", juce::StringArray { "Vintage", "Fast" }, 0));
-    layout.push_back(std::make_unique<juce::AudioParameterBool>("autoGain", "Auto Gain", false));
-    layout.push_back(std::make_unique<juce::AudioParameterChoice>("character", "Character", juce::StringArray { "Clean", "Transformer", "FET Push" }, 2));
-    layout.push_back(std::make_unique<juce::AudioParameterChoice>("oversampling", "Oversampling", juce::StringArray { "Off", "2x", "4x" }, 1));
-    layout.push_back(std::make_unique<juce::AudioParameterBool>("bypass", "Bypass", false));
+    layout.push_back(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID { "detectorMode", versionHint++ }, "Detector Mode", juce::StringArray { "Vintage", "Fast" }, 0));
+    layout.push_back(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "autoGain", versionHint++ }, "Auto Gain", false));
+    layout.push_back(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID { "character", versionHint++ }, "Character", juce::StringArray { "Clean", "Transformer", "FET Push" }, 2));
+    layout.push_back(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID { "oversampling", versionHint++ }, "Oversampling", juce::StringArray { "Off", "2x", "4x" }, 1));
+    layout.push_back(std::make_unique<juce::AudioParameterBool>(juce::ParameterID { "bypass", versionHint++ }, "Bypass", false));
     return { layout.begin(), layout.end() };
 }
 
@@ -115,7 +126,7 @@ void CompressorAudioProcessor::sanitizeParameterState()
     clampFloat("threshold", -60.0f, 0.0f);
     clampFloat("attack", 0.02f, 0.8f);
     clampFloat("release", 50.0f, 1100.0f);
-    clampFloat("makeup", -12.0f, 24.0f);
+    clampFloat("makeup", -24.0f, 24.0f);
     clampFloat("mix", 0.0f, 100.0f);
     clampFloat("output", -24.0f, 12.0f);
     clampFloat("knee", 0.0f, 8.0f);
@@ -157,7 +168,7 @@ void CompressorAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     auto blockGainReductionDb = 0.0f;
     for (int sample = 0; sample < samples; ++sample)
     {
-        CompressorParameters current { thresholdDb.getNextValue(), nearestFetRatio(ratio.getNextValue()), attackMs.getNextValue(), releaseMs.getNextValue(), makeupDb.getNextValue(), kneeDb.getNextValue(), sidechainHighPassHz.getNextValue(), parameterChoice("detectorMode"), parameterChoice("character"), parameterChoice("oversampling") };
+        CompressorParameters current { internalFetThresholdDb(thresholdDb.getNextValue()), nearestFetRatio(ratio.getNextValue()), attackMs.getNextValue(), releaseMs.getNextValue(), makeupDb.getNextValue(), kneeDb.getNextValue(), sidechainHighPassHz.getNextValue(), parameterChoice("detectorMode"), parameterChoice("character"), parameterChoice("oversampling") };
         compressor.setParameters(current);
         float* pointers[] { buffer.getWritePointer(0, sample), buffer.getWritePointer(1, sample) };
         compressor.process(pointers, channels, 1);
@@ -178,7 +189,14 @@ void CompressorAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     outputLevelDb.store(bufferPeakDb(buffer), std::memory_order_relaxed);
 }
 
-juce::AudioProcessorEditor* CompressorAudioProcessor::createEditor() { return new CompressorAudioProcessorEditor(*this); }
+juce::AudioProcessorEditor* CompressorAudioProcessor::createEditor()
+{
+#ifdef COMPRESSOR808BYTES_PROCESSOR_TESTS
+    return nullptr;
+#else
+    return new CompressorAudioProcessorEditor(*this);
+#endif
+}
 void CompressorAudioProcessor::getStateInformation(juce::MemoryBlock& destinationData)
 {
     copyXmlToBinary(*parameters.copyState().createXml(), destinationData);

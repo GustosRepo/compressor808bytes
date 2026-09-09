@@ -89,56 +89,43 @@ void drawScrew(juce::Graphics& graphics, juce::Point<float> centre, float radius
 {
     const auto scale = juce::jlimit(0.5f, 1.0f, radius / 11.0f);
     const auto bounds = juce::Rectangle<float>(radius * 2.0f, radius * 2.0f).withCentre(centre);
-    graphics.setColour(juce::Colour::fromRGB(86, 48, 22).withAlpha(0.22f));
-    graphics.fillEllipse(bounds.expanded(radius * 0.76f).translated(1.0f * scale, 2.0f * scale));
-    graphics.setColour(juce::Colour::fromRGB(28, 18, 11).withAlpha(0.18f));
-    graphics.fillEllipse(bounds.expanded(radius * 0.38f).translated(-1.0f * scale, 1.0f * scale));
-    graphics.setColour(juce::Colour::fromRGB(7, 7, 6));
-    graphics.fillEllipse(bounds.translated(1.0f * scale, 2.0f * scale));
-    graphics.setColour(juce::Colour::fromRGB(31, 28, 23));
+    graphics.setColour(juce::Colour::fromRGB(10, 12, 14).withAlpha(0.12f));
+    graphics.fillEllipse(bounds.translated(0.0f, 1.5f * scale).expanded(radius * 0.28f));
+    graphics.setColour(juce::Colour::fromRGB(214, 220, 219));
+    graphics.fillEllipse(bounds.expanded(radius * 0.20f));
+    graphics.setColour(juce::Colour::fromRGB(42, 49, 54));
     graphics.fillEllipse(bounds);
-    graphics.setColour(juce::Colour::fromRGB(80, 72, 58));
+    graphics.setColour(juce::Colour::fromRGB(108, 119, 126));
     graphics.drawEllipse(bounds.reduced(1.0f * scale), 1.0f * scale);
-    graphics.setColour(juce::Colour::fromRGB(3, 3, 3));
-    graphics.drawLine(centre.x - radius * 0.48f, centre.y, centre.x + radius * 0.48f, centre.y, 2.5f * scale);
-    graphics.drawLine(centre.x, centre.y - radius * 0.48f, centre.x, centre.y + radius * 0.48f, 2.5f * scale);
-    graphics.setColour(juce::Colour::fromRGB(124, 71, 30).withAlpha(0.42f));
-    const auto rustArc = bounds.expanded(2.0f * scale);
-    juce::Path rust;
-    rust.addArc(rustArc.getX(), rustArc.getY(), rustArc.getWidth(), rustArc.getHeight(), 0.12f, 1.36f, true);
-    graphics.strokePath(rust, juce::PathStrokeType(1.5f * scale));
+    graphics.setColour(juce::Colour::fromRGB(11, 13, 15));
+    graphics.drawLine(centre.x - radius * 0.36f, centre.y, centre.x + radius * 0.36f, centre.y, 1.4f * scale);
 }
 
 void drawAgeMarks(juce::Graphics& graphics, juce::Rectangle<float> area, float scale)
 {
-    for (int mark = 0; mark < 620; ++mark)
+    graphics.setColour(juce::Colour::fromRGB(255, 255, 255).withAlpha(0.18f));
+    graphics.drawHorizontalLine(static_cast<int>(area.getY() + 1.0f * scale), area.getX() + 12.0f * scale, area.getRight() - 12.0f * scale);
+    graphics.setColour(juce::Colour::fromRGB(112, 124, 130).withAlpha(0.075f));
+    for (int line = 1; line < 6; ++line)
     {
-        const auto x = area.getX() + static_cast<float>((mark * 71) % juce::jmax(1, static_cast<int>(area.getWidth())));
-        const auto y = area.getY() + static_cast<float>((mark * 43) % juce::jmax(1, static_cast<int>(area.getHeight())));
-        const auto size = (0.8f + static_cast<float>((mark * 17) % 7)) * scale;
-        graphics.setColour(juce::Colour::fromRGB(54, 43, 29).withAlpha(mark % 9 == 0 ? 0.24f : 0.085f));
-        graphics.fillEllipse(x, y, size, size * 0.62f);
+        const auto x = area.getX() + area.getWidth() * static_cast<float>(line) / 6.0f;
+        graphics.drawVerticalLine(juce::roundToInt(x), area.getY() + 16.0f * scale, area.getBottom() - 16.0f * scale);
     }
 
-    for (int scratch = 0; scratch < 58; ++scratch)
+    graphics.setColour(juce::Colour::fromRGB(112, 124, 130).withAlpha(0.055f));
+    for (int line = 1; line < 4; ++line)
     {
-        const auto x = area.getX() + static_cast<float>((scratch * 107) % juce::jmax(1, static_cast<int>(area.getWidth())));
-        const auto y = area.getY() + static_cast<float>((scratch * 61) % juce::jmax(1, static_cast<int>(area.getHeight())));
-        const auto length = (18.0f + static_cast<float>(scratch % 7) * 11.0f) * scale;
-        const auto slope = (-10.0f + static_cast<float>(scratch % 5) * 5.0f) * scale;
-        graphics.setColour(juce::Colour::fromRGB(35, 27, 18).withAlpha(scratch % 4 == 0 ? 0.34f : 0.22f));
-        graphics.drawLine(x, y, x + length, y + slope, (scratch % 6 == 0 ? 1.3f : 0.8f) * scale);
-        graphics.setColour(juce::Colours::white.withAlpha(0.045f));
-        graphics.drawLine(x + 1.0f * scale, y - 1.0f * scale, x + length + 1.0f * scale, y + slope - 1.0f * scale, 0.45f * scale);
+        const auto y = area.getY() + area.getHeight() * static_cast<float>(line) / 4.0f;
+        graphics.drawHorizontalLine(juce::roundToInt(y), area.getX() + 16.0f * scale, area.getRight() - 16.0f * scale);
     }
 }
 
 void drawGrimeAround(juce::Graphics& graphics, juce::Point<float> centre, float radius, float intensity)
 {
-    graphics.setColour(juce::Colour::fromRGB(31, 22, 14).withAlpha(0.13f * intensity));
-    graphics.fillEllipse(juce::Rectangle<float>(radius * 2.0f, radius * 1.18f).withCentre(centre).translated(0.0f, radius * 0.12f));
-    graphics.setColour(juce::Colour::fromRGB(98, 56, 24).withAlpha(0.08f * intensity));
-    graphics.fillEllipse(juce::Rectangle<float>(radius * 1.55f, radius * 0.82f).withCentre(centre).translated(-radius * 0.15f, radius * 0.2f));
+    graphics.setColour(juce::Colour::fromRGB(255, 255, 255).withAlpha(0.20f * intensity));
+    graphics.drawEllipse(juce::Rectangle<float>(radius * 2.0f, radius * 2.0f).withCentre(centre), 1.2f * intensity);
+    graphics.setColour(juce::Colour::fromRGB(42, 49, 54).withAlpha(0.08f * intensity));
+    graphics.fillEllipse(juce::Rectangle<float>(radius * 1.78f, radius * 1.78f).withCentre(centre));
 }
 
 void drawKnobGrime(juce::Graphics& graphics, const KnobComponent& knob, float multiplier)
@@ -153,16 +140,16 @@ void drawKnobGrime(juce::Graphics& graphics, const KnobComponent& knob, float mu
 
 void drawBottomRailGrime(juce::Graphics& graphics, juce::Rectangle<float> rail, float scale)
 {
-    graphics.setColour(juce::Colour::fromRGB(6, 5, 4).withAlpha(0.38f));
-    graphics.fillRect(rail.withTrimmedTop(rail.getHeight() * 0.58f));
+    graphics.setColour(juce::Colour::fromRGB(63, 72, 78).withAlpha(0.42f));
+    graphics.drawHorizontalLine(static_cast<int>(rail.getY() + 1.0f * scale), rail.getX() + 12.0f * scale, rail.getRight() - 12.0f * scale);
 
-    for (int streak = 0; streak < 18; ++streak)
+    for (int stripe = 0; stripe < 4; ++stripe)
     {
-        const auto x = rail.getX() + static_cast<float>((streak * 79) % juce::jmax(1, static_cast<int>(rail.getWidth())));
-        const auto y = rail.getY() + 8.0f * scale + static_cast<float>((streak * 17) % juce::jmax(1, static_cast<int>(rail.getHeight() - 18.0f * scale)));
-        graphics.setColour(juce::Colour::fromRGB(108, 65, 31).withAlpha(0.16f));
-        graphics.drawLine(x, y, x + (4.0f + static_cast<float>(streak % 4)) * scale,
-                          y + (26.0f + static_cast<float>((streak * 3) % 30)) * scale, 1.2f * scale);
+        const auto x = rail.getX() + 46.0f * scale + static_cast<float>(stripe) * 9.0f * scale;
+        const auto stripeHeight = juce::jmin(46.0f * scale, rail.getHeight() - 40.0f * scale);
+        const auto stripeY = rail.getY() + 24.0f * scale;
+        graphics.setColour(stripe % 2 == 0 ? juce::Colour::fromRGB(242, 102, 53) : juce::Colour::fromRGB(237, 190, 72));
+        graphics.fillRoundedRectangle(x, stripeY, 4.5f * scale, stripeHeight, 2.25f * scale);
     }
 }
 } // namespace
@@ -179,13 +166,15 @@ CompressorAudioProcessorEditor::CompressorAudioProcessorEditor(CompressorAudioPr
     configureChoiceControl(detectorModeLabel, detectorMode, "Detector", { "Vintage", "Fast" });
     configureChoiceControl(characterLabel, character, "Character", { "Clean", "Transformer", "FET Push" });
     configureChoiceControl(oversamplingLabel, oversampling, "Oversamp", { "Off", "2x", "4x" });
+    for (auto* label : { &detectorModeLabel, &characterLabel, &oversamplingLabel })
+        label->setColour(juce::Label::textColourId, juce::Colour::fromRGB(190, 202, 202));
     ratioLabel.setText("RATIO", juce::dontSendNotification);
     ratioLabel.setJustificationType(juce::Justification::centred);
     ratioLabel.setFont(juce::FontOptions(12.5f).withStyle("Bold"));
-    ratioLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(37, 31, 24));
+    ratioLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(34, 39, 43));
     ratioLabel.setInterceptsMouseClicks(false, false);
 
-    for (auto* control : { &input, &threshold, &attack, &release, &makeup, &mix, &output })
+    for (auto* control : { &input, &attack, &release, &makeup, &mix })
         addAndMakeVisible(*control);
 
     addAndMakeVisible(ratioLabel);
@@ -199,10 +188,10 @@ CompressorAudioProcessorEditor::CompressorAudioProcessorEditor(CompressorAudioPr
     {
         meterModeButtons[index].setButtonText(meterModeButtonSpecs[index].text);
         meterModeButtons[index].setClickingTogglesState(false);
-        meterModeButtons[index].setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(13, 12, 10));
-        meterModeButtons[index].setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(152, 42, 24));
-        meterModeButtons[index].setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(184, 164, 123));
-        meterModeButtons[index].setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(245, 218, 151));
+        meterModeButtons[index].setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(22, 26, 29));
+        meterModeButtons[index].setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(237, 190, 72));
+        meterModeButtons[index].setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(218, 226, 223));
+        meterModeButtons[index].setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(21, 24, 27));
         meterModeButtons[index].onClick = [this, index] { setMeterMode(meterModeButtonSpecs[index].mode); };
         addAndMakeVisible(meterModeButtons[index]);
     }
@@ -249,7 +238,7 @@ void CompressorAudioProcessorEditor::configureChoiceControl(juce::Label& label, 
     label.setText(labelText.toUpperCase(), juce::dontSendNotification);
     label.setJustificationType(juce::Justification::centred);
     label.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
-    label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(37, 31, 24));
+    label.setColour(juce::Label::textColourId, juce::Colour::fromRGB(34, 39, 43));
     label.setInterceptsMouseClicks(false, false);
 
     selector.setJustificationType(juce::Justification::centredLeft);
@@ -263,10 +252,10 @@ void CompressorAudioProcessorEditor::configureRatioButton(juce::TextButton& butt
     button.setButtonText(text);
     button.setClickingTogglesState(false);
     button.setWantsKeyboardFocus(true);
-    button.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(13, 12, 10));
-    button.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(152, 42, 24));
-    button.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(184, 164, 123));
-    button.setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(245, 218, 151));
+    button.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(22, 26, 29));
+    button.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(242, 102, 53));
+    button.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(218, 226, 223));
+    button.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     button.onClick = [this, ratioValue] { setRatioFromButton(ratioValue); };
 }
 
@@ -345,7 +334,7 @@ void CompressorAudioProcessorEditor::applyControlHierarchy()
 {
     threshold.setControlSize(KnobComponent::Size::Large);
     makeup.setControlSize(KnobComponent::Size::Large);
-    input.setControlSize(KnobComponent::Size::Medium);
+    input.setControlSize(KnobComponent::Size::Large);
     output.setControlSize(KnobComponent::Size::Medium);
     attack.setControlSize(KnobComponent::Size::Small);
     release.setControlSize(KnobComponent::Size::Small);
@@ -364,23 +353,31 @@ void CompressorAudioProcessorEditor::paint(juce::Graphics& g)
     const auto bottomRail = panel.removeFromBottom(bottomRailHeight);
     const auto compactRail = bottomRail.getWidth() < 760.0f;
 
-    g.fillAll(juce::Colour::fromRGB(10, 10, 9));
-    g.setColour(juce::Colour::fromRGB(10, 10, 9));
-    g.fillRoundedRectangle(fullPanel.expanded(4.0f * scale), 8.0f * scale);
-    g.setColour(juce::Colour::fromRGB(188, 181, 162));
-    g.fillRoundedRectangle(fullPanel, 6.0f * scale);
+    g.fillAll(juce::Colour::fromRGB(7, 9, 10));
+    g.setColour(juce::Colour::fromRGB(0, 0, 0).withAlpha(0.34f));
+    g.fillRoundedRectangle(fullPanel.translated(0.0f, 7.0f * scale), 9.0f * scale);
+
+    juce::ColourGradient panelGradient(juce::Colour::fromRGB(235, 239, 238), fullPanel.getX(), fullPanel.getY(),
+                                       juce::Colour::fromRGB(205, 213, 213), fullPanel.getRight(), fullPanel.getBottom(), false);
+    g.setGradientFill(panelGradient);
+    g.fillRoundedRectangle(fullPanel, 9.0f * scale);
     drawAgeMarks(g, fullPanel, scale);
 
-    g.setColour(juce::Colour::fromRGB(17, 16, 14));
+    g.setColour(juce::Colour::fromRGB(18, 22, 25));
     g.fillRect(bottomRail);
     drawAgeMarks(g, bottomRail, scale);
     drawBottomRailGrime(g, bottomRail, scale);
-    g.setColour(juce::Colour::fromRGB(49, 40, 29));
+    g.setColour(juce::Colour::fromRGB(77, 88, 94));
     g.drawHorizontalLine(static_cast<int>(bottomRail.getY()), bottomRail.getX(), bottomRail.getRight());
 
-    g.setColour(juce::Colour::fromRGB(37, 31, 24));
-    g.drawRoundedRectangle(fullPanel, 6.0f * scale, 2.0f * scale);
-    g.drawRect(bottomRail.toNearestInt(), juce::jmax(1, juce::roundToInt(scale)));
+    const auto topBand = fullPanel.withHeight(84.0f * scale);
+    g.setColour(juce::Colour::fromRGB(246, 248, 247).withAlpha(0.62f));
+    g.fillRect(topBand);
+    g.setColour(juce::Colour::fromRGB(173, 184, 187));
+    g.drawHorizontalLine(static_cast<int>(topBand.getBottom()), fullPanel.getX(), fullPanel.getRight());
+
+    g.setColour(juce::Colour::fromRGB(54, 64, 70));
+    g.drawRoundedRectangle(fullPanel, 9.0f * scale, 1.3f * scale);
 
     const auto panelScrewInset = 24.0f * scale;
     const auto railScrewInset = 26.0f * scale;
@@ -392,19 +389,27 @@ void CompressorAudioProcessorEditor::paint(juce::Graphics& g)
                         juce::Point<float>(fullPanel.getRight() - railScrewInset, bottomRail.getY() + 28.0f * scale) })
         drawScrew(g, point, 11.0f * scale);
 
-    g.setColour(juce::Colour::fromRGB(37, 31, 24));
+    const auto brandX = fullPanel.getX() + 68.0f * scale;
+    g.setColour(juce::Colour::fromRGB(27, 32, 36));
     g.setFont(juce::FontOptions(27.0f * scale).withStyle("Bold"));
-    g.drawText("808BYTES", static_cast<int>(fullPanel.getX() + 68.0f * scale), static_cast<int>(fullPanel.getY() + 52.0f * scale),
+    g.drawText("808BYTES", static_cast<int>(brandX), static_cast<int>(fullPanel.getY() + 35.0f * scale),
                static_cast<int>(230.0f * scale), static_cast<int>(34.0f * scale), juce::Justification::centredLeft);
-    g.drawHorizontalLine(static_cast<int>(fullPanel.getY() + 100.0f * scale), fullPanel.getX() + 68.0f * scale, fullPanel.getX() + 270.0f * scale);
+    g.setColour(juce::Colour::fromRGB(90, 101, 108));
+    g.setFont(juce::FontOptions(10.5f * scale).withStyle("Bold"));
+    g.drawText("FET COMPRESSOR", static_cast<int>(brandX), static_cast<int>(fullPanel.getY() + 64.0f * scale),
+               static_cast<int>(210.0f * scale), static_cast<int>(18.0f * scale), juce::Justification::centredLeft);
+    g.setColour(juce::Colour::fromRGB(242, 102, 53));
+    g.fillRoundedRectangle(brandX, fullPanel.getY() + 91.0f * scale, 94.0f * scale, 4.0f * scale, 2.0f * scale);
+    g.setColour(juce::Colour::fromRGB(237, 190, 72));
+    g.fillRoundedRectangle(brandX + 102.0f * scale, fullPanel.getY() + 91.0f * scale, 38.0f * scale, 4.0f * scale, 2.0f * scale);
 
     if (! compactRail)
     {
-        g.setColour(juce::Colour::fromRGB(170, 151, 113));
-        g.setFont(juce::FontOptions(15.0f * scale));
+        g.setColour(juce::Colour::fromRGB(211, 222, 222));
+        g.setFont(juce::FontOptions(13.0f * scale).withStyle("Bold"));
         const auto analogArea = juce::Rectangle<float>(fullPanel.getX() + 90.0f * scale, bottomRail.getY() + 26.0f * scale,
-                                                       100.0f * scale, 24.0f * scale);
-        g.drawText("ANALOG", analogArea.toNearestInt(), juce::Justification::centredLeft);
+                                                       120.0f * scale, 24.0f * scale);
+        g.drawText("ANALOG PATH", analogArea.toNearestInt(), juce::Justification::centredLeft);
 
         const auto selectorLeft = audioProcessor.getTier() == PluginTier::Deluxe && detectorMode.isVisible()
             ? static_cast<float>(detectorMode.getX())
@@ -417,22 +422,19 @@ void CompressorAudioProcessorEditor::paint(juce::Graphics& g)
         {
             const auto presetPlateWidth = juce::jlimit(190.0f * scale, 360.0f * scale, presetAreaWidth * 0.78f);
             auto presetPlate = juce::Rectangle<float>(presetPlateWidth, 36.0f * scale).withCentre({ presetAreaLeft + presetAreaWidth * 0.5f, bottomRail.getCentreY() });
-            g.setColour(juce::Colour::fromRGB(8, 8, 7));
-            g.fillRoundedRectangle(presetPlate, 4.0f * scale);
-            g.setColour(juce::Colour::fromRGB(85, 70, 48));
-            g.drawRoundedRectangle(presetPlate, 4.0f * scale, 1.5f * scale);
-            drawScrew(g, { presetPlate.getX() + 16.0f * scale, presetPlate.getCentreY() }, 7.0f * scale);
-            drawScrew(g, { presetPlate.getRight() - 16.0f * scale, presetPlate.getCentreY() }, 7.0f * scale);
-            g.setColour(juce::Colour::fromRGB(168, 143, 101));
-            g.setFont(juce::FontOptions(18.0f * scale));
-            g.drawText("808Bytes", presetPlate.toNearestInt(), juce::Justification::centred);
-            g.setColour(juce::Colour::fromRGB(58, 40, 21).withAlpha(0.36f));
-            g.drawLine(presetPlate.getX() + 44.0f * scale, presetPlate.getY() + 9.0f * scale, presetPlate.getRight() - 54.0f * scale, presetPlate.getY() + 13.0f * scale, 1.0f * scale);
-            g.drawLine(presetPlate.getX() + 64.0f * scale, presetPlate.getBottom() - 8.0f * scale, presetPlate.getRight() - 38.0f * scale, presetPlate.getBottom() - 12.0f * scale, 0.8f * scale);
+            g.setColour(juce::Colour::fromRGB(11, 14, 16));
+            g.fillRoundedRectangle(presetPlate, 5.0f * scale);
+            g.setColour(juce::Colour::fromRGB(86, 100, 108));
+            g.drawRoundedRectangle(presetPlate, 5.0f * scale, 1.1f * scale);
+            g.setColour(juce::Colour::fromRGB(71, 211, 157));
+            g.setFont(juce::FontOptions(13.5f * scale).withStyle("Bold"));
+            g.drawText("76 FET", presetPlate.reduced(16.0f * scale, 0.0f).toNearestInt(), juce::Justification::centredLeft);
+            g.setColour(juce::Colour::fromRGB(237, 190, 72));
+            g.fillEllipse(presetPlate.getRight() - 25.0f * scale, presetPlate.getCentreY() - 4.0f * scale, 8.0f * scale, 8.0f * scale);
         }
     }
 
-    for (const auto* knob : { &input, &threshold, &makeup, &output })
+    for (const auto* knob : { &input, &makeup })
         drawKnobGrime(g, *knob, 0.70f);
 
     if (audioProcessor.getTier() == PluginTier::Deluxe)
@@ -478,16 +480,13 @@ void CompressorAudioProcessorEditor::resized()
 
     constexpr auto smallWidth = 132.0f;
     constexpr auto smallHeight = 144.0f;
-    constexpr auto mediumWidth = 157.0f;
-    constexpr auto mediumHeight = 174.0f;
     constexpr auto largeWidth = 226.0f;
     constexpr auto largeHeight = 236.0f;
     const auto smallY = body.getBottom() - smallHeight - 14.0f;
     const auto largeY = meterBounds.getBottom() + 18.0f;
-    const auto mediumY = largeY + (largeHeight - mediumHeight) * 0.5f;
 
     const std::array<std::pair<KnobComponent*, float>, 2> dominantControls {{
-        { &threshold, 0.34f },
+        { &input, 0.34f },
         { &makeup, 0.66f }
     }};
 
@@ -497,8 +496,8 @@ void CompressorAudioProcessorEditor::resized()
         control->setBounds(toEditorBounds(juce::Rectangle<float>(largeWidth, largeHeight).withCentre({ centreX, largeY + largeHeight * 0.5f })));
     }
 
-    input.setBounds(toEditorBounds(juce::Rectangle<float>(mediumWidth, mediumHeight).withCentre({ body.getX() + body.getWidth() * 0.13f, mediumY + mediumHeight * 0.5f })));
-    output.setBounds(toEditorBounds(juce::Rectangle<float>(mediumWidth, mediumHeight).withCentre({ body.getX() + body.getWidth() * 0.87f, mediumY + mediumHeight * 0.5f })));
+    threshold.setBounds({});
+    output.setBounds({});
 
     const auto layoutSecondaryControl = [&body, &toEditorBounds, smallY] (KnobComponent& control, float xRatio)
     {

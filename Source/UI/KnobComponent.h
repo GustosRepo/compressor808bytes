@@ -24,6 +24,7 @@ private:
     void updateValueText();
 
     Size controlSize { Size::Medium };
+    juce::String controlName;
     juce::String unit;
     juce::Label label;
     juce::Label value;

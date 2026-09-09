@@ -34,12 +34,15 @@ private:
     [[nodiscard]] float calculateGainDb(float inputDb) const noexcept;
     [[nodiscard]] float processDetector(float linkedPower, float linkedPeak) noexcept;
     [[nodiscard]] float smoothGainDb(float targetGainDb) noexcept;
+    [[nodiscard]] float processFetAttenuator(float sample, float gain, float gainReductionDb) const noexcept;
     [[nodiscard]] float processCharacter(float sample, int channel, float gainReductionDb) noexcept;
     [[nodiscard]] float shapeCharacterSample(float sample, float drive, float asymmetry) const noexcept;
 
     CompressorParameters parameters;
     std::array<SidechainHighPassFilter, 2> sidechainFilters;
+    std::array<float, 2> feedbackSamples {};
     std::array<float, 2> previousCharacterInput {};
+    std::array<float, 2> characterLowBandState {};
     std::array<float, 2> characterLowPassState {};
     std::array<bool, 2> characterStateInitialised {};
     double sampleRateHz { 44100.0 };

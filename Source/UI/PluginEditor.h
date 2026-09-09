@@ -31,7 +31,7 @@ private:
     void timerCallback() override;
     CompressorAudioProcessor& audioProcessor;
     WeatheredLookAndFeel weatheredLookAndFeel;
-    KnobComponent input { "Input", "dB" }, threshold { "Peak Reduction", "dB" }, attack { "Attack", "ms" }, release { "Release", "ms" }, makeup { "Gain", "dB" }, mix { "Mix", "%" }, output { "Output", "dB" }, knee { "Knee", "dB" }, sidechainHighPass { "SC HPF", "Hz" };
+    KnobComponent input { "Input", "dB" }, threshold { "Cal", "dB" }, attack { "Attack", "ms" }, release { "Release", "ms" }, makeup { "Output", "dB" }, mix { "Mix", "%" }, output { "Trim", "dB" }, knee { "Knee", "dB" }, sidechainHighPass { "SC HPF", "Hz" };
     MeterComponent inputMeter, outputMeter, reductionMeter;
     juce::ToggleButton bypass { "Bypass" };
     juce::Label ratioLabel;
