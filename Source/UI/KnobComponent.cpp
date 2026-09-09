@@ -72,19 +72,19 @@ ScaleStrip scaleStripForSlider(const juce::Slider& slider, const juce::String& u
         return { "-24", "0", "+24" };
 
     if (unit == "ms" && maximum <= 1.0f)
-        return { "SLOW", {}, "FAST" };
+        return { {}, "SLOW - FAST", {} };
 
     if (unit == "ms")
-        return { "FAST", {}, "SLOW" };
+        return { {}, "FAST - SLOW", {} };
 
     if (unit == "%")
-        return { "0", {}, "100" };
+        return { {}, "0 - 100", {} };
 
     if (unit == "Hz")
-        return { "20", {}, "500" };
+        return { {}, "20 - 500", {} };
 
     if (unit == "dB" && controlName == "KNEE")
-        return { "0", {}, juce::String(juce::roundToInt(maximum)) };
+        return { {}, "0 - " + juce::String(juce::roundToInt(maximum)), {} };
 
     return {};
 }
@@ -155,13 +155,22 @@ void KnobComponent::paint(juce::Graphics& graphics)
     const auto valueBounds = value.getBounds().toFloat();
     const auto stripHeight = juce::jlimit(10.0f, 15.0f, side * 0.11f);
     const auto stripGap = juce::jmax(4.0f, side * 0.035f);
+    const auto usesCentredRange = scaleStrip.left.isEmpty() && scaleStrip.right.isEmpty();
     auto stripArea = valueBounds.withY(valueBounds.getY() - stripHeight - stripGap)
                                     .withHeight(stripHeight)
-                                    .expanded(side >= 112.0f ? 22.0f : 12.0f, 0.0f);
+                                    .expanded(usesCentredRange ? 4.0f : side >= 112.0f ? 22.0f : 12.0f, 0.0f);
     stripArea = stripArea.getIntersection(getLocalBounds().toFloat().reduced(3.0f));
 
-    graphics.setFont(juce::FontOptions(juce::jlimit(7.5f, 10.5f, side * 0.085f)).withStyle("Bold"));
-    graphics.setColour(juce::Colour::fromRGB(58, 66, 71).withAlpha(0.88f));
+    graphics.setFont(juce::FontOptions(usesCentredRange ? juce::jlimit(7.4f, 8.8f, side * 0.078f)
+                                                        : juce::jlimit(7.5f, 10.5f, side * 0.085f))
+                         .withStyle("Bold"));
+    graphics.setColour(juce::Colour::fromRGB(58, 66, 71).withAlpha(usesCentredRange ? 0.74f : 0.88f));
+
+    if (usesCentredRange)
+    {
+        graphics.drawFittedText(scaleStrip.centre, stripArea.toNearestInt(), juce::Justification::centred, 1, 0.86f);
+        return;
+    }
 
     const auto third = stripArea.getWidth() / 3.0f;
     auto leftArea = stripArea.removeFromLeft(third);
