@@ -4,6 +4,8 @@
 #include "Filters.h"
 
 #include <array>
+#include <memory>
+#include <juce_dsp/juce_dsp.h>
 
 namespace compressor808bytes
 {
@@ -36,15 +38,20 @@ private:
     [[nodiscard]] float smoothGainDb(float targetGainDb) noexcept;
     [[nodiscard]] float processFetAttenuator(float sample, float gain, float gainReductionDb) const noexcept;
     [[nodiscard]] float processCharacter(float sample, int channel, float gainReductionDb) noexcept;
+    [[nodiscard]] float processCharacterSample(float sample, int channel, int characterMode, float drive, float asymmetry,
+                                               float toneCoefficient) noexcept;
+    [[nodiscard]] float processOversampledCharacter(float sample, int channel, int characterMode, float drive, float asymmetry,
+                                                    float toneCoefficient, int oversamplingStages) noexcept;
+    [[nodiscard]] juce::dsp::Oversampling<float>* oversamplerFor(int channel, int oversamplingStages) noexcept;
     [[nodiscard]] float shapeCharacterSample(float sample, float drive, float asymmetry) const noexcept;
 
     CompressorParameters parameters;
     std::array<SidechainHighPassFilter, 2> sidechainFilters;
     std::array<float, 2> feedbackSamples {};
-    std::array<float, 2> previousCharacterInput {};
     std::array<float, 2> characterLowBandState {};
-    std::array<float, 2> characterLowPassState {};
     std::array<bool, 2> characterStateInitialised {};
+    std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 2> characterOversamplers2x;
+    std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 2> characterOversamplers4x;
     double sampleRateHz { 44100.0 };
     float rmsEnvelopePower { 0.0f };
     float peakEnvelope { 0.0f };

@@ -28,13 +28,16 @@ private:
     void updateRatioButtons();
     void setMeterMode(MeterMode newMode);
     void updateMeterModeButtons();
+    void updatePresetSelector();
     void timerCallback() override;
     CompressorAudioProcessor& audioProcessor;
     WeatheredLookAndFeel weatheredLookAndFeel;
     KnobComponent input { "Input", "dB" }, threshold { "Cal", "dB" }, attack { "Attack", "ms" }, release { "Release", "ms" }, makeup { "Output", "dB" }, mix { "Mix", "%" }, output { "Trim", "dB" }, knee { "Knee", "dB" }, sidechainHighPass { "SC HPF", "Hz" };
     MeterComponent inputMeter, outputMeter, reductionMeter;
     juce::ToggleButton bypass { "Bypass" };
+    juce::TextButton autoGainButton { "AUTO" };
     juce::Label ratioLabel;
+    juce::ComboBox presetSelector;
     std::array<juce::TextButton, 5> ratioButtons;
     std::array<juce::TextButton, 3> meterModeButtons;
     MeterMode meterMode { MeterMode::GainReduction };
@@ -44,7 +47,7 @@ private:
     using ComboAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     std::unique_ptr<Attachment> inputAttachment, thresholdAttachment, attackAttachment, releaseAttachment, makeupAttachment, mixAttachment, outputAttachment, kneeAttachment, highPassAttachment;
     std::unique_ptr<ComboAttachment> detectorModeAttachment, characterAttachment, oversamplingAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment, autoGainAttachment;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CompressorAudioProcessorEditor)
 };
 } // namespace compressor808bytes

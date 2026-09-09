@@ -12,6 +12,76 @@ namespace compressor808bytes
 {
 namespace
 {
+struct PresetParameterValue
+{
+    const char* id;
+    float value;
+};
+
+struct FactoryPreset
+{
+    const char* name;
+    const char* category;
+    std::array<PresetParameterValue, 15> values;
+};
+
+constexpr std::array<FactoryPreset, 6> factoryPresets {{
+    {
+        "76 Start",
+        "Utility",
+        {{
+            { "input", 0.0f }, { "threshold", -18.0f }, { "ratio", 4.0f }, { "attack", 0.20f }, { "release", 250.0f },
+            { "makeup", 0.0f }, { "mix", 100.0f }, { "output", 0.0f }, { "knee", 1.5f }, { "sidechainHPF", 30.0f },
+            { "detectorMode", 0.0f }, { "autoGain", 0.0f }, { "character", 1.0f }, { "oversampling", 1.0f }, { "bypass", 0.0f }
+        }}
+    },
+    {
+        "Vocal Grab",
+        "Vocals",
+        {{
+            { "input", 6.0f }, { "threshold", -18.0f }, { "ratio", 4.0f }, { "attack", 0.12f }, { "release", 430.0f },
+            { "makeup", 0.0f }, { "mix", 100.0f }, { "output", 0.0f }, { "knee", 2.0f }, { "sidechainHPF", 120.0f },
+            { "detectorMode", 0.0f }, { "autoGain", 1.0f }, { "character", 1.0f }, { "oversampling", 1.0f }, { "bypass", 0.0f }
+        }}
+    },
+    {
+        "Bass Hold",
+        "Bass",
+        {{
+            { "input", 5.0f }, { "threshold", -18.0f }, { "ratio", 8.0f }, { "attack", 0.28f }, { "release", 520.0f },
+            { "makeup", 1.0f }, { "mix", 100.0f }, { "output", -1.0f }, { "knee", 2.5f }, { "sidechainHPF", 60.0f },
+            { "detectorMode", 0.0f }, { "autoGain", 0.0f }, { "character", 1.0f }, { "oversampling", 1.0f }, { "bypass", 0.0f }
+        }}
+    },
+    {
+        "Drum Smash",
+        "Drums",
+        {{
+            { "input", 13.0f }, { "threshold", -18.0f }, { "ratio", 21.0f }, { "attack", 0.72f }, { "release", 95.0f },
+            { "makeup", -1.5f }, { "mix", 72.0f }, { "output", -2.0f }, { "knee", 0.4f }, { "sidechainHPF", 90.0f },
+            { "detectorMode", 1.0f }, { "autoGain", 0.0f }, { "character", 2.0f }, { "oversampling", 2.0f }, { "bypass", 0.0f }
+        }}
+    },
+    {
+        "Parallel Snap",
+        "Drums",
+        {{
+            { "input", 10.0f }, { "threshold", -18.0f }, { "ratio", 12.0f }, { "attack", 0.55f }, { "release", 140.0f },
+            { "makeup", 1.5f }, { "mix", 48.0f }, { "output", -1.0f }, { "knee", 1.0f }, { "sidechainHPF", 110.0f },
+            { "detectorMode", 1.0f }, { "autoGain", 1.0f }, { "character", 2.0f }, { "oversampling", 2.0f }, { "bypass", 0.0f }
+        }}
+    },
+    {
+        "Mix Kiss",
+        "Bus",
+        {{
+            { "input", 2.0f }, { "threshold", -18.0f }, { "ratio", 4.0f }, { "attack", 0.45f }, { "release", 700.0f },
+            { "makeup", 0.0f }, { "mix", 35.0f }, { "output", 0.0f }, { "knee", 3.0f }, { "sidechainHPF", 150.0f },
+            { "detectorMode", 0.0f }, { "autoGain", 0.0f }, { "character", 1.0f }, { "oversampling", 1.0f }, { "bypass", 0.0f }
+        }}
+    }
+}};
+
 juce::AudioParameterFloatAttributes parameterAttributes(const juce::String& label)
 {
     return juce::AudioParameterFloatAttributes().withLabel(label);
@@ -42,6 +112,12 @@ float internalFetThresholdDb(float legacyThresholdDb) noexcept
     const auto calibrationTrimDb = juce::jlimit(-4.0f, 4.0f, (legacyThresholdDb + 18.0f) * 0.16f);
     return nominalThresholdDb + calibrationTrimDb;
 }
+
+float automaticMakeupDb(float gainReductionDb) noexcept
+{
+    const auto reduction = juce::jlimit(0.0f, 24.0f, gainReductionDb);
+    return juce::jlimit(0.0f, 12.0f, reduction * 0.55f);
+}
 } // namespace
 
 CompressorAudioProcessor::CompressorAudioProcessor()
@@ -49,6 +125,29 @@ CompressorAudioProcessor::CompressorAudioProcessor()
                                       .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "Parameters", createParameterLayout())
 {
+}
+
+int CompressorAudioProcessor::getNumPrograms()
+{
+    return static_cast<int>(factoryPresets.size());
+}
+
+int CompressorAudioProcessor::getCurrentProgram()
+{
+    return currentProgram;
+}
+
+void CompressorAudioProcessor::setCurrentProgram(int index)
+{
+    applyFactoryPreset(index);
+}
+
+const juce::String CompressorAudioProcessor::getProgramName(int index)
+{
+    if (! juce::isPositiveAndBelow(index, getNumPrograms()))
+        return {};
+
+    return factoryPresets[static_cast<size_t>(index)].name;
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::createParameterLayout()
@@ -139,6 +238,25 @@ void CompressorAudioProcessor::sanitizeParameterState()
     }
 }
 
+void CompressorAudioProcessor::applyFactoryPreset(int index)
+{
+    currentProgram = juce::jlimit(0, getNumPrograms() - 1, index);
+    const auto& preset = factoryPresets[static_cast<size_t>(currentProgram)];
+
+    for (const auto& value : preset.values)
+    {
+        if (auto* parameter = parameters.getParameter(value.id))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(value.value));
+            parameter->endChangeGesture();
+        }
+    }
+
+    sanitizeParameterState();
+    updateSmoothers();
+}
+
 float CompressorAudioProcessor::bufferPeakDb(const juce::AudioBuffer<float>& buffer) noexcept
 {
     return juce::Decibels::gainToDecibels(std::max(buffer.getMagnitude(0, buffer.getNumSamples()), 1.0e-5f), -100.0f);
@@ -155,6 +273,7 @@ void CompressorAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     };
     inputLevelDb.store(bufferPeakDb(buffer), std::memory_order_relaxed);
     updateSmoothers();
+    const auto autoGainEnabled = parameters.getRawParameterValue("autoGain")->load() >= 0.5f;
 
     for (int sample = 0; sample < samples; ++sample)
     {
@@ -175,14 +294,20 @@ void CompressorAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         const auto compressorGainReductionDb = compressor.getGainReductionDb();
         blockGainReductionDb = std::max(blockGainReductionDb, compressorGainReductionDb);
         const auto wet = mix.getNextValue() * 0.01f * (1.0f - bypass.getNextValue());
+        const auto autoMakeupDb = autoGainEnabled ? automaticMakeupDb(compressorGainReductionDb) : 0.0f;
+        const auto autoMakeupGain = juce::Decibels::decibelsToGain(autoMakeupDb);
         const auto outputGainDbValue = outputGainDb.getNextValue();
         const auto outputGain = juce::Decibels::decibelsToGain(outputGainDbValue);
-        const auto wetPathGain = juce::Decibels::decibelsToGain(current.makeupDb - compressorGainReductionDb);
+        const auto wetPathGain = juce::Decibels::decibelsToGain(current.makeupDb + autoMakeupDb - compressorGainReductionDb);
         const auto blendedCompressorGain = 1.0f + wet * (wetPathGain - 1.0f);
         const auto signedMeterGainDb = juce::Decibels::gainToDecibels(std::max(blendedCompressorGain, 1.0e-5f), -100.0f) + outputGainDbValue;
         gainReductionMeter.processSample(signedMeterGainDb);
         for (int channel = 0; channel < channels; ++channel)
-            buffer.setSample(channel, sample, (dryBuffer.getSample(channel, sample) + wet * (buffer.getSample(channel, sample) - dryBuffer.getSample(channel, sample))) * outputGain);
+        {
+            const auto dry = dryBuffer.getSample(channel, sample);
+            const auto compensatedWet = buffer.getSample(channel, sample) * autoMakeupGain;
+            buffer.setSample(channel, sample, (dry + wet * (compensatedWet - dry)) * outputGain);
+        }
     }
     gainReductionDb.store(blockGainReductionDb, std::memory_order_relaxed);
     meterGainChangeDb.store(gainReductionMeter.getValueDb(), std::memory_order_relaxed);
@@ -199,13 +324,19 @@ juce::AudioProcessorEditor* CompressorAudioProcessor::createEditor()
 }
 void CompressorAudioProcessor::getStateInformation(juce::MemoryBlock& destinationData)
 {
-    copyXmlToBinary(*parameters.copyState().createXml(), destinationData);
+    auto state = parameters.copyState();
+    state.setProperty("currentProgram", currentProgram, nullptr);
+    copyXmlToBinary(*state.createXml(), destinationData);
 }
 void CompressorAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary(data, sizeInBytes); xml != nullptr && xml->hasTagName(parameters.state.getType()))
     {
-        parameters.replaceState(juce::ValueTree::fromXml(*xml));
+        auto state = juce::ValueTree::fromXml(*xml);
+        if (state.hasProperty("currentProgram"))
+            currentProgram = juce::jlimit(0, getNumPrograms() - 1, static_cast<int>(state.getProperty("currentProgram")));
+
+        parameters.replaceState(state);
         sanitizeParameterState();
         updateSmoothers();
     }

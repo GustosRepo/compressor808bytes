@@ -14,7 +14,7 @@
 - [x] Launch standalone development build
 - [x] Test VST3 in FL Studio on macOS
 
-## Phase 2: 76/FET Direction - Started
+## Phase 2: 76/FET Direction - Core Implementation Complete
 
 - [x] Retune attack range for sub-millisecond FET-style response
 - [x] Retune release range for faster 76-style recovery
@@ -26,19 +26,31 @@
 - [x] Add 1176-style center meter modes for GR, +4 output, and +8 output
 - [x] Lock the editor to a fixed-aspect hardware canvas with uniform scaling
 - [x] Refresh the faceplate into a clean modern hardware visual direction
+- [x] Stabilize knob scales so labels do not appear/disappear across plugin sizes
+- [x] Polish small-control scale labels to avoid crowded/jumbled lower-row text
 - [x] Make visible Input drive compression amount around a fixed internal FET operating point
 - [x] Hide the legacy threshold and output-trim controls from the 76-style faceplate
 - [x] Tune all-buttons timing, bias, and FET-stage distortion beyond the 20:1 mode
 - [x] Add low-band-weighted transformer/FET character shaping
 - [x] Rename character modes toward Transformer and FET Push
+- [x] Implement auto gain as post-detection wet-path compensation
+- [x] Replace interpolation-only nonlinear oversampling with JUCE half-band up/downsampling
+- [x] Add six factory presets through the processor program API
+- [x] Add bottom-rail preset selector to the modern UI
 - [x] Add DSP coverage for sparse transient detector behavior
 - [x] Add DSP coverage for separate 20:1 and all-buttons limiting behavior
 - [x] Add processor-level tests for input drive, wet/dry mix, bypass, output gain, and meters
+- [x] Add processor-level tests for auto gain compensation without detector feedback
+- [x] Add processor-level tests for factory preset application and state round-trip
 
 ## Deferred Work
 
-- [ ] Add factory preset browser and preset library
-- [ ] Implement auto gain
-- [ ] Replace lightweight nonlinear oversampling with proper anti-aliased oversampling
+- [ ] Host-test the modern UI at minimum, default, and maximum editor sizes
+- [ ] Save final UI screenshots for docs/release notes
 - [ ] Tune attack/release/character against reference drum, bass, and vocal material
-- [ ] Polish modern hardware visual details after host testing
+- [ ] Final polish pass after host testing
+
+## Next Work That Does Not Require Host Testing
+
+- [ ] Add a release-notes draft for the current 76/FET build
+- [ ] Add a manual host-test checklist for FL Studio and AU/VST3 validation

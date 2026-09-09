@@ -57,6 +57,16 @@ void CompressorEngine::prepare(double sampleRate, int, int)
     for (auto& filter : sidechainFilters)
         filter.prepare(sampleRate);
 
+    for (size_t channel = 0; channel < sidechainFilters.size(); ++channel)
+    {
+        characterOversamplers2x[channel] = std::make_unique<juce::dsp::Oversampling<float>>(
+            1, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false);
+        characterOversamplers4x[channel] = std::make_unique<juce::dsp::Oversampling<float>>(
+            1, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false);
+        characterOversamplers2x[channel]->initProcessing(1);
+        characterOversamplers4x[channel]->initProcessing(1);
+    }
+
     reset();
 }
 
@@ -66,10 +76,14 @@ void CompressorEngine::reset()
         filter.reset();
 
     feedbackSamples.fill(0.0f);
-    previousCharacterInput.fill(0.0f);
     characterLowBandState.fill(0.0f);
-    characterLowPassState.fill(0.0f);
     characterStateInitialised.fill(false);
+    for (auto& oversampler : characterOversamplers2x)
+        if (oversampler != nullptr)
+            oversampler->reset();
+    for (auto& oversampler : characterOversamplers4x)
+        if (oversampler != nullptr)
+            oversampler->reset();
     rmsEnvelopePower = 0.0f;
     peakEnvelope = 0.0f;
     smoothedGainDb = 0.0f;
@@ -190,17 +204,15 @@ float CompressorEngine::processCharacter(float sample, int channel, float reduct
     const auto characterMode = std::clamp(parameters.character, 0, 2);
     if (characterMode == 0)
     {
-        previousCharacterInput[static_cast<size_t>(channel)] = sample;
-        characterLowPassState[static_cast<size_t>(channel)] = sample;
         characterStateInitialised[static_cast<size_t>(channel)] = true;
+        characterLowBandState[static_cast<size_t>(channel)] = sample;
         return sample;
     }
 
     const auto channelIndex = static_cast<size_t>(channel);
     if (! characterStateInitialised[channelIndex])
     {
-        previousCharacterInput[channelIndex] = sample;
-        characterLowPassState[channelIndex] = sample;
+        characterLowBandState[channelIndex] = sample;
         characterStateInitialised[channelIndex] = true;
     }
 
@@ -210,31 +222,58 @@ float CompressorEngine::processCharacter(float sample, int channel, float reduct
     const auto drive = baseDrive + dynamicDrive;
     const auto asymmetry = (characterMode == 1 ? 0.021f : 0.038f) + (allButtons ? 0.009f : 0.0f);
     const auto wetMix = (characterMode == 1 ? 0.20f : 0.34f) + (allButtons ? 0.08f : 0.0f);
-    const auto oversamplingFactor = parameters.oversampling == 2 ? 4 : (parameters.oversampling == 1 ? 2 : 1);
-    const auto oversampledRate = sampleRateHz * static_cast<double>(oversamplingFactor);
-    const auto lowPassCoefficient = onePoleLowPassCoefficient(std::min(18000.0f, 0.43f * static_cast<float>(sampleRateHz)), oversampledRate);
-
-    auto accumulated = 0.0f;
-    const auto previousInput = previousCharacterInput[channelIndex];
-    const auto toneCoefficient = onePoleLowPassCoefficient(characterMode == 1 ? 150.0f : 210.0f, sampleRateHz);
-    for (int phase = 1; phase <= oversamplingFactor; ++phase)
-    {
-        const auto fraction = static_cast<float>(phase) / static_cast<float>(oversamplingFactor);
-        const auto oversampledInput = previousInput + (sample - previousInput) * fraction;
-        characterLowBandState[channelIndex] += toneCoefficient * (oversampledInput - characterLowBandState[channelIndex]);
-        const auto lowBand = characterLowBandState[channelIndex];
-        const auto highBand = oversampledInput - lowBand;
-        const auto toneDrivenInput = oversampledInput + lowBand * (characterMode == 1 ? 0.035f : 0.060f) - highBand * (characterMode == 1 ? 0.010f : 0.018f);
-        const auto toneDrive = drive * (1.0f + std::min(0.18f, std::abs(lowBand) * (characterMode == 1 ? 0.16f : 0.24f)));
-        const auto shaped = shapeCharacterSample(toneDrivenInput, toneDrive, asymmetry);
-        const auto compensated = shaped * (characterMode == 1 ? 0.985f : 0.965f);
-        characterLowPassState[channelIndex] += lowPassCoefficient * (compensated - characterLowPassState[channelIndex]);
-        accumulated += characterLowPassState[channelIndex];
-    }
-
-    previousCharacterInput[channelIndex] = sample;
-    const auto shapedSample = accumulated / static_cast<float>(oversamplingFactor);
+    const auto oversamplingStages = std::clamp(parameters.oversampling, 0, 2);
+    const auto oversampledRate = sampleRateHz * static_cast<double>(1 << oversamplingStages);
+    const auto toneCoefficient = onePoleLowPassCoefficient(characterMode == 1 ? 150.0f : 210.0f, oversampledRate);
+    const auto shapedSample = oversamplingStages == 0
+        ? processCharacterSample(sample, channel, characterMode, drive, asymmetry, toneCoefficient)
+        : processOversampledCharacter(sample, channel, characterMode, drive, asymmetry, toneCoefficient, oversamplingStages);
     return sample + (shapedSample - sample) * wetMix;
+}
+
+float CompressorEngine::processCharacterSample(float sample, int channel, int characterMode, float drive, float asymmetry,
+                                               float toneCoefficient) noexcept
+{
+    const auto channelIndex = static_cast<size_t>(channel);
+    characterLowBandState[channelIndex] += toneCoefficient * (sample - characterLowBandState[channelIndex]);
+    const auto lowBand = characterLowBandState[channelIndex];
+    const auto highBand = sample - lowBand;
+    const auto toneDrivenInput = sample + lowBand * (characterMode == 1 ? 0.035f : 0.060f) - highBand * (characterMode == 1 ? 0.010f : 0.018f);
+    const auto toneDrive = drive * (1.0f + std::min(0.18f, std::abs(lowBand) * (characterMode == 1 ? 0.16f : 0.24f)));
+    const auto shaped = shapeCharacterSample(toneDrivenInput, toneDrive, asymmetry);
+    return shaped * (characterMode == 1 ? 0.985f : 0.965f);
+}
+
+float CompressorEngine::processOversampledCharacter(float sample, int channel, int characterMode, float drive, float asymmetry,
+                                                    float toneCoefficient, int oversamplingStages) noexcept
+{
+    auto* oversampler = oversamplerFor(channel, oversamplingStages);
+    if (oversampler == nullptr)
+        return processCharacterSample(sample, channel, characterMode, drive, asymmetry, toneCoefficient);
+
+    const float* inputPointers[] { &sample };
+    juce::dsp::AudioBlock<const float> inputBlock(inputPointers, 1, 1);
+    auto oversampledBlock = oversampler->processSamplesUp(inputBlock);
+    auto* oversampledSamples = oversampledBlock.getChannelPointer(0);
+
+    for (size_t index = 0; index < oversampledBlock.getNumSamples(); ++index)
+        oversampledSamples[index] = processCharacterSample(oversampledSamples[index], channel, characterMode, drive, asymmetry, toneCoefficient);
+
+    auto outputSample = 0.0f;
+    float* outputPointers[] { &outputSample };
+    juce::dsp::AudioBlock<float> outputBlock(outputPointers, 1, 1);
+    oversampler->processSamplesDown(outputBlock);
+    return outputSample;
+}
+
+juce::dsp::Oversampling<float>* CompressorEngine::oversamplerFor(int channel, int oversamplingStages) noexcept
+{
+    const auto channelIndex = static_cast<size_t>(std::clamp(channel, 0, 1));
+    if (oversamplingStages == 1)
+        return characterOversamplers2x[channelIndex].get();
+    if (oversamplingStages == 2)
+        return characterOversamplers4x[channelIndex].get();
+    return nullptr;
 }
 
 void CompressorEngine::process(float* const* channels, int channelCount, int sampleCount) noexcept

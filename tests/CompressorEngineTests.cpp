@@ -70,6 +70,11 @@ void setProcessorParameter(CompressorAudioProcessor& processor, const char* id, 
         parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
 }
 
+float getProcessorParameter(const CompressorAudioProcessor& processor, const char* id)
+{
+    return processor.parameters.getRawParameterValue(id)->load();
+}
+
 void setFetProcessorDefaults(CompressorAudioProcessor& processor)
 {
     setProcessorParameter(processor, "input", 0.0f);
@@ -85,6 +90,7 @@ void setFetProcessorDefaults(CompressorAudioProcessor& processor)
     setProcessorParameter(processor, "detectorMode", 1.0f);
     setProcessorParameter(processor, "character", 0.0f);
     setProcessorParameter(processor, "oversampling", 0.0f);
+    setProcessorParameter(processor, "autoGain", 0.0f);
     setProcessorParameter(processor, "bypass", 0.0f);
 }
 
@@ -560,6 +566,36 @@ bool testProcessorMakeupAndOutputDoNotDriveDetector()
                  "processor makeup and output gain do not drive the feedback detector");
 }
 
+struct ProcessorAutoGainResult
+{
+    float peak;
+    float reductionDb;
+};
+
+ProcessorAutoGainResult processorResponseWithAutoGain(bool enabled)
+{
+    constexpr int blockSize = 512;
+    CompressorAudioProcessor processor;
+    setFetProcessorDefaults(processor);
+    setProcessorParameter(processor, "input", 12.0f);
+    setProcessorParameter(processor, "ratio", 12.0f);
+    setProcessorParameter(processor, "autoGain", enabled ? 1.0f : 0.0f);
+    processor.prepareToPlay(48000.0, blockSize);
+
+    juce::AudioBuffer<float> buffer(2, blockSize);
+    processRepeatedProcessorBlocks(processor, buffer, 0.20f, 90);
+    return { peakMagnitude(buffer), processor.getGainReductionDb() };
+}
+
+bool testProcessorAutoGainCompensatesWetPathAfterDetection()
+{
+    const auto autoOff = processorResponseWithAutoGain(false);
+    const auto autoOn = processorResponseWithAutoGain(true);
+
+    return check(autoOn.peak > autoOff.peak * 1.35f, "auto gain raises the compressed wet-path level")
+        && check(std::abs(autoOn.reductionDb - autoOff.reductionDb) < 0.35f, "auto gain does not drive the feedback detector");
+}
+
 bool testProcessorMetersPublishUsefulValues()
 {
     constexpr int blockSize = 512;
@@ -575,6 +611,49 @@ bool testProcessorMetersPublishUsefulValues()
     return check(processor.getGainReductionDb() > 3.0f, "processor publishes gain reduction meter value")
         && check(std::isfinite(processor.getOutputLevelDb()) && processor.getOutputLevelDb() > -80.0f, "processor publishes output level meter value")
         && check(std::isfinite(processor.getMeterGainChangeDb()), "processor publishes signed gain-change meter value");
+}
+
+bool testFactoryPresetsApplyExpectedParameters()
+{
+    CompressorAudioProcessor processor;
+
+    const auto hasNamedPrograms = processor.getNumPrograms() >= 6
+        && processor.getProgramName(0) == "76 Start"
+        && processor.getProgramName(3) == "Drum Smash";
+
+    processor.setCurrentProgram(3);
+    const auto selectedDrumSmash = processor.getCurrentProgram() == 3;
+    const auto drumSmashValuesApplied = approximatelyEqual(getProcessorParameter(processor, "input"), 13.0f, 0.001f)
+        && approximatelyEqual(getProcessorParameter(processor, "ratio"), 21.0f, 0.001f)
+        && approximatelyEqual(getProcessorParameter(processor, "attack"), 0.72f, 0.001f)
+        && approximatelyEqual(getProcessorParameter(processor, "release"), 95.0f, 0.001f)
+        && approximatelyEqual(getProcessorParameter(processor, "mix"), 72.0f, 0.001f)
+        && approximatelyEqual(getProcessorParameter(processor, "character"), 2.0f, 0.001f)
+        && approximatelyEqual(getProcessorParameter(processor, "oversampling"), 2.0f, 0.001f);
+
+    return check(hasNamedPrograms, "factory preset names are exposed through processor programs")
+        && check(selectedDrumSmash && drumSmashValuesApplied, "factory preset applies expected 76-style parameters");
+}
+
+bool testFactoryPresetStateRoundTrip()
+{
+    CompressorAudioProcessor source;
+    source.setCurrentProgram(4);
+    setProcessorParameter(source, "output", -4.0f);
+
+    juce::MemoryBlock savedState;
+    source.getStateInformation(savedState);
+
+    CompressorAudioProcessor restored;
+    restored.setStateInformation(savedState.getData(), static_cast<int>(savedState.getSize()));
+
+    return check(restored.getCurrentProgram() == 4, "saved state restores current factory preset index")
+        && check(approximatelyEqual(getProcessorParameter(restored, "input"), 10.0f, 0.001f)
+                     && approximatelyEqual(getProcessorParameter(restored, "ratio"), 12.0f, 0.001f)
+                     && approximatelyEqual(getProcessorParameter(restored, "mix"), 48.0f, 0.001f)
+                     && approximatelyEqual(getProcessorParameter(restored, "output"), -4.0f, 0.001f)
+                     && approximatelyEqual(getProcessorParameter(restored, "autoGain"), 1.0f, 0.001f),
+                 "saved state restores preset-derived and edited parameter values");
 }
 } // namespace
 
@@ -601,7 +680,10 @@ int main()
     passed = testProcessorBypassReturnsDrySignal() && passed;
     passed = testProcessorMixBlendsDryAndWet() && passed;
     passed = testProcessorMakeupAndOutputDoNotDriveDetector() && passed;
+    passed = testProcessorAutoGainCompensatesWetPathAfterDetection() && passed;
     passed = testProcessorMetersPublishUsefulValues() && passed;
+    passed = testFactoryPresetsApplyExpectedParameters() && passed;
+    passed = testFactoryPresetStateRoundTrip() && passed;
 
     if (!passed)
         return 1;

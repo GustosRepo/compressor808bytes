@@ -174,6 +174,26 @@ CompressorAudioProcessorEditor::CompressorAudioProcessorEditor(CompressorAudioPr
     ratioLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(34, 39, 43));
     ratioLabel.setInterceptsMouseClicks(false, false);
 
+    presetSelector.setJustificationType(juce::Justification::centredLeft);
+    presetSelector.setScrollWheelEnabled(true);
+    for (int program = 0; program < audioProcessor.getNumPrograms(); ++program)
+        presetSelector.addItem(audioProcessor.getProgramName(program), program + 1);
+    presetSelector.onChange = [this]
+    {
+        const auto selectedProgram = presetSelector.getSelectedId() - 1;
+        if (juce::isPositiveAndBelow(selectedProgram, audioProcessor.getNumPrograms()))
+            audioProcessor.setCurrentProgram(selectedProgram);
+        updateRatioButtons();
+    };
+    addAndMakeVisible(presetSelector);
+
+    autoGainButton.setClickingTogglesState(true);
+    autoGainButton.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(22, 26, 29));
+    autoGainButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(71, 211, 157));
+    autoGainButton.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(218, 226, 223));
+    autoGainButton.setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(10, 14, 16));
+    addAndMakeVisible(autoGainButton);
+
     for (auto* control : { &input, &attack, &release, &makeup, &mix })
         addAndMakeVisible(*control);
 
@@ -225,7 +245,9 @@ CompressorAudioProcessorEditor::CompressorAudioProcessorEditor(CompressorAudioPr
     characterAttachment = std::make_unique<ComboAttachment>(state, "character", character);
     oversamplingAttachment = std::make_unique<ComboAttachment>(state, "oversampling", oversampling);
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(state, "bypass", bypass);
+    autoGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(state, "autoGain", autoGainButton);
     setMeterMode(MeterMode::GainReduction);
+    updatePresetSelector();
     updateRatioButtons();
     setSize(defaultEditorWidth, defaultEditorHeight);
     startTimerHz(30);
@@ -322,6 +344,13 @@ void CompressorAudioProcessorEditor::updateMeterModeButtons()
         meterModeButtons[index].setToggleState(meterModeButtonSpecs[index].mode == meterMode, juce::dontSendNotification);
 }
 
+void CompressorAudioProcessorEditor::updatePresetSelector()
+{
+    const auto selectedId = audioProcessor.getCurrentProgram() + 1;
+    if (presetSelector.getSelectedId() != selectedId)
+        presetSelector.setSelectedId(selectedId, juce::dontSendNotification);
+}
+
 void CompressorAudioProcessorEditor::updateRatioButtons()
 {
     const auto selectedRatio = nearestRatioButtonValue(audioProcessor.parameters.getRawParameterValue("ratio")->load());
@@ -411,27 +440,12 @@ void CompressorAudioProcessorEditor::paint(juce::Graphics& g)
                                                        120.0f * scale, 24.0f * scale);
         g.drawText("ANALOG PATH", analogArea.toNearestInt(), juce::Justification::centredLeft);
 
-        const auto selectorLeft = audioProcessor.getTier() == PluginTier::Deluxe && detectorMode.isVisible()
+        auto selectorLeft = audioProcessor.getTier() == PluginTier::Deluxe && detectorMode.isVisible()
             ? static_cast<float>(detectorMode.getX())
             : fullPanel.getRight();
-        const auto presetAreaLeft = analogArea.getRight() + 24.0f * scale;
-        const auto presetAreaRight = selectorLeft - 18.0f * scale;
-        const auto presetAreaWidth = presetAreaRight - presetAreaLeft;
-
-        if (presetAreaWidth >= 190.0f * scale)
-        {
-            const auto presetPlateWidth = juce::jlimit(190.0f * scale, 360.0f * scale, presetAreaWidth * 0.78f);
-            auto presetPlate = juce::Rectangle<float>(presetPlateWidth, 36.0f * scale).withCentre({ presetAreaLeft + presetAreaWidth * 0.5f, bottomRail.getCentreY() });
-            g.setColour(juce::Colour::fromRGB(11, 14, 16));
-            g.fillRoundedRectangle(presetPlate, 5.0f * scale);
-            g.setColour(juce::Colour::fromRGB(86, 100, 108));
-            g.drawRoundedRectangle(presetPlate, 5.0f * scale, 1.1f * scale);
-            g.setColour(juce::Colour::fromRGB(71, 211, 157));
-            g.setFont(juce::FontOptions(13.5f * scale).withStyle("Bold"));
-            g.drawText("76 FET", presetPlate.reduced(16.0f * scale, 0.0f).toNearestInt(), juce::Justification::centredLeft);
-            g.setColour(juce::Colour::fromRGB(237, 190, 72));
-            g.fillEllipse(presetPlate.getRight() - 25.0f * scale, presetPlate.getCentreY() - 4.0f * scale, 8.0f * scale, 8.0f * scale);
-        }
+        if (autoGainButton.isVisible())
+            selectorLeft = std::min(selectorLeft, static_cast<float>(autoGainButton.getX()));
+        juce::ignoreUnused(selectorLeft);
     }
 
     for (const auto* knob : { &input, &makeup })
@@ -532,6 +546,20 @@ void CompressorAudioProcessorEditor::resized()
         layoutChoiceControl(detectorModeLabel, detectorMode, toEditorBounds({ selectorX, selectorY, selectorWidth, selectorHeight }));
         layoutChoiceControl(characterLabel, character, toEditorBounds({ selectorX + selectorWidth + selectorGap, selectorY, selectorWidth, selectorHeight }));
         layoutChoiceControl(oversamplingLabel, oversampling, toEditorBounds({ selectorX + (selectorWidth + selectorGap) * 2.0f, selectorY, selectorWidth, selectorHeight }));
+
+        constexpr auto autoGainWidth = 76.0f;
+        constexpr auto autoGainHeight = 36.0f;
+        autoGainButton.setBounds(toEditorBounds({ selectorX - selectorGap - autoGainWidth,
+                                                  bottomRail.getCentreY() - autoGainHeight * 0.5f,
+                                                  autoGainWidth,
+                                                  autoGainHeight }));
+
+        const auto presetAreaLeft = fullPanel.getX() + 286.0f;
+        const auto presetAreaRight = selectorX - selectorGap - autoGainWidth - 18.0f;
+        const auto presetAreaWidth = presetAreaRight - presetAreaLeft;
+        const auto presetWidth = juce::jlimit(220.0f, 380.0f, presetAreaWidth);
+        presetSelector.setBounds(toEditorBounds(juce::Rectangle<float>(presetWidth, 36.0f)
+                                                    .withCentre({ presetAreaLeft + presetAreaWidth * 0.5f, bottomRail.getCentreY() })));
     }
     else
     {
@@ -548,6 +576,20 @@ void CompressorAudioProcessorEditor::resized()
 
         for (const auto& [control, xRatio] : secondaryControls)
             layoutSecondaryControl(*control, xRatio);
+
+        constexpr auto autoGainWidth = 76.0f;
+        constexpr auto autoGainHeight = 36.0f;
+        autoGainButton.setBounds(toEditorBounds({ fullPanel.getRight() - 30.0f - autoGainWidth,
+                                                  bottomRail.getCentreY() - autoGainHeight * 0.5f,
+                                                  autoGainWidth,
+                                                  autoGainHeight }));
+
+        const auto presetAreaLeft = fullPanel.getX() + 286.0f;
+        const auto presetAreaRight = fullPanel.getRight() - 30.0f - autoGainWidth - 18.0f;
+        const auto presetAreaWidth = presetAreaRight - presetAreaLeft;
+        const auto presetWidth = juce::jlimit(220.0f, 420.0f, presetAreaWidth);
+        presetSelector.setBounds(toEditorBounds(juce::Rectangle<float>(presetWidth, 36.0f)
+                                                    .withCentre({ presetAreaLeft + presetAreaWidth * 0.5f, bottomRail.getCentreY() })));
     }
 }
 void CompressorAudioProcessorEditor::timerCallback()
@@ -555,6 +597,7 @@ void CompressorAudioProcessorEditor::timerCallback()
     inputMeter.repaint();
     outputMeter.repaint();
     reductionMeter.repaint();
+    updatePresetSelector();
     updateRatioButtons();
     updateMeterModeButtons();
 }

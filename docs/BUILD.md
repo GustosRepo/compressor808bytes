@@ -27,6 +27,16 @@ With the commands above, CMake places bundles at:
 
 The standalone development app is at `build/Compressor808Bytes_artefacts/Release/Standalone/808Bytes Compressor.app`.
 
+For the local Debug build used during development:
+
+```sh
+cmake --build build --parallel
+open -n "build/Compressor808Bytes_artefacts/Debug/Standalone/808Bytes Compressor.app"
+ctest --test-dir build --output-on-failure
+```
+
+The standalone is the quickest place to check resize behavior, meter modes, and the current modern hardware UI before host testing.
+
 ## FL Studio macOS Test
 
 1. Install and locally sign the VST3 development build:

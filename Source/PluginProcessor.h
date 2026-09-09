@@ -35,10 +35,10 @@ public:
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override { return {}; }
+    int getNumPrograms() override;
+    int getCurrentProgram() override;
+    void setCurrentProgram(int) override;
+    const juce::String getProgramName(int) override;
     void changeProgramName(int, const juce::String&) override {}
     void getStateInformation(juce::MemoryBlock& destinationData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
@@ -59,11 +59,13 @@ public:
 private:
     void updateSmoothers();
     void sanitizeParameterState();
+    void applyFactoryPreset(int index);
     static float bufferPeakDb(const juce::AudioBuffer<float>& buffer) noexcept;
 
     CompressorEngine compressor;
     GainReductionMeterBallistics gainReductionMeter;
     juce::AudioBuffer<float> dryBuffer;
+    int currentProgram { 0 };
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> inputGainDb, thresholdDb, ratio;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> attackMs, releaseMs, makeupDb, mix;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputGainDb, kneeDb, sidechainHighPassHz, bypass;
