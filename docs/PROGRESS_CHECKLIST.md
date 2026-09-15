@@ -52,5 +52,6 @@
 
 ## Next Work That Does Not Require Host Testing
 
+- [ ] Tune VU/GR meter legibility and calibration for more realistic hardware-style readout behavior
 - [ ] Add a release-notes draft for the current 76/FET build
 - [ ] Add a manual host-test checklist for FL Studio and AU/VST3 validation

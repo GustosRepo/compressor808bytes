@@ -482,9 +482,9 @@ void CompressorAudioProcessorEditor::resized()
         return designToEditorBounds(canvas, designBounds);
     };
 
-    const auto meterBounds = juce::Rectangle<float>(430.0f, 160.0f).withCentre({ designWidth * 0.5f, body.getY() + 122.0f });
+    const auto meterBounds = juce::Rectangle<float>(520.0f, 210.0f).withCentre({ designWidth * 0.5f, body.getY() + 136.0f });
     reductionMeter.setBounds(toEditorBounds(meterBounds));
-    layoutMeterModeButtons(toEditorBounds(juce::Rectangle<float>(176.0f, 32.0f).withCentre({ meterBounds.getCentreX(), meterBounds.getBottom() + 16.0f })));
+    layoutMeterModeButtons(toEditorBounds(juce::Rectangle<float>(176.0f, 32.0f).withCentre({ meterBounds.getCentreX(), meterBounds.getBottom() + 20.0f })));
 
     constexpr auto levelMeterWidth = 54.0f;
     constexpr auto levelMeterGap = 18.0f;

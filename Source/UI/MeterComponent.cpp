@@ -1,5 +1,6 @@
 #include "MeterComponent.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -25,20 +26,20 @@ constexpr std::array<MeterMark, 9> reductionMarks {{
     { 2.0f, 0.76f, "", false },
     { 3.0f, 0.68f, "3", true },
     { 5.0f, 0.56f, "5", true },
-    { 7.0f, 0.46f, "7", true },
-    { 10.0f, 0.33f, "10", true },
+    { 7.0f, 0.45f, "7", true },
+    { 10.0f, 0.32f, "10", true },
     { 15.0f, 0.18f, "", false },
     { 20.0f, 0.06f, "20", true }
 }};
 
 constexpr std::array<MeterMark, 11> outputMarks {{
     { -20.0f, 0.06f, "-20", true },
-    { -10.0f, 0.28f, "-10", true },
-    { -7.0f, 0.40f, "-7", true },
-    { -5.0f, 0.51f, "-5", true },
-    { -3.0f, 0.62f, "-3", true },
-    { -2.0f, 0.70f, "", false },
-    { -1.0f, 0.78f, "", false },
+    { -10.0f, 0.27f, "-10", true },
+    { -7.0f, 0.39f, "-7", true },
+    { -5.0f, 0.50f, "-5", true },
+    { -3.0f, 0.61f, "-3", true },
+    { -2.0f, 0.69f, "", false },
+    { -1.0f, 0.77f, "", false },
     { 0.0f, 0.85f, "0", true },
     { 1.0f, 0.91f, "", false },
     { 2.0f, 0.96f, "", false },
@@ -49,17 +50,32 @@ juce::Point<float> scalePointForProportion(juce::Rectangle<float> face, float pr
 {
     const auto t = juce::jlimit(0.0f, 1.0f, proportion);
     const auto centred = (t - 0.5f) * 2.0f;
-    const auto x = face.getX() + face.getWidth() * (0.08f + 0.84f * t);
-    const auto y = face.getY() + face.getHeight() * (0.35f + 0.20f * centred * centred);
-    return { x, y };
+    return { face.getX() + face.getWidth() * (0.07f + 0.86f * t),
+             face.getY() + face.getHeight() * (0.33f + 0.16f * centred * centred) };
 }
 
-juce::Point<float> tickDirectionForProportion(float proportion) noexcept
+juce::Point<float> meterPivotForFace(juce::Rectangle<float> face) noexcept
+{
+    return { face.getCentreX(), face.getBottom() + face.getHeight() * 0.25f };
+}
+
+juce::Point<float> tickDirectionForProportion(juce::Rectangle<float> face, float proportion) noexcept
 {
     const auto t = juce::jlimit(0.0f, 1.0f, proportion);
-    auto normal = juce::Point<float>((0.5f - t) * 0.34f, 1.0f);
+    const auto neighbour = scalePointForProportion(face, juce::jlimit(0.0f, 1.0f, t + 0.01f));
+    const auto point = scalePointForProportion(face, t);
+    const auto tangent = neighbour - point;
+    auto normal = juce::Point<float>(-tangent.y, tangent.x);
+    if (normal.y < 0.0f)
+        normal *= -1.0f;
     const auto length = std::sqrt(normal.x * normal.x + normal.y * normal.y);
     return length > 0.0f ? normal / length : juce::Point<float>(0.0f, 1.0f);
+}
+
+juce::Point<float> arcPointForProportion(juce::Rectangle<float> face, float proportion, float radiusRatio) noexcept
+{
+    const auto pivot = meterPivotForFace(face);
+    return pivot + (scalePointForProportion(face, proportion) - pivot) * radiusRatio;
 }
 
 template <size_t size>
@@ -102,20 +118,51 @@ float outputLevelToVu(float outputLevelDb, MeterMode mode) noexcept
     return outputLevelDb + calibrationDb;
 }
 
-void strokeMeterArc(juce::Graphics& graphics, juce::Rectangle<float> face, float start, float end,
-                    juce::Colour colour, float thickness) noexcept
+void drawMeterArc(juce::Graphics& graphics, juce::Rectangle<float> face, float startProportion, float endProportion,
+                  juce::Colour colour, float radiusRatio, float thickness) noexcept
 {
     juce::Path path;
-    constexpr int segments = 52;
+    constexpr int segments = 72;
+
     for (int segment = 0; segment <= segments; ++segment)
     {
-        const auto t = start + (end - start) * static_cast<float>(segment) / static_cast<float>(segments);
-        const auto point = scalePointForProportion(face, t);
+        const auto amount = static_cast<float>(segment) / static_cast<float>(segments);
+        const auto point = arcPointForProportion(face, startProportion + (endProportion - startProportion) * amount, radiusRatio);
         segment == 0 ? path.startNewSubPath(point) : path.lineTo(point);
     }
 
     graphics.setColour(colour);
     graphics.strokePath(path, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+template <size_t size>
+void drawMeterTicks(juce::Graphics& graphics, juce::Rectangle<float> face, const std::array<MeterMark, size>& marks,
+                    bool isReductionMode, float scale) noexcept
+{
+    for (const auto& mark : marks)
+    {
+        const auto outer = arcPointForProportion(face, mark.proportion, 1.0f);
+        const auto direction = tickDirectionForProportion(face, mark.proportion);
+        const auto inner = outer + direction * ((mark.major ? 17.0f : 10.0f) * scale);
+        const auto tickColour = ! isReductionMode && mark.valueDb > 0.0f ? juce::Colour::fromRGB(174, 38, 28)
+                                                                          : juce::Colour::fromRGB(25, 26, 24);
+        graphics.setColour(tickColour);
+        graphics.drawLine(inner.x, inner.y, outer.x, outer.y, (mark.major ? 1.5f : 0.9f) * scale);
+
+        if (mark.label[0] != '\0')
+        {
+            const auto labelPos = outer + direction * ((mark.major ? 28.0f : 20.0f) * scale);
+            graphics.setFont(juce::FontOptions(mark.major ? 11.4f * scale : 8.6f * scale).withStyle("Bold"));
+            graphics.setColour(! isReductionMode && mark.valueDb > 0.0f ? juce::Colour::fromRGB(174, 38, 28)
+                                                                          : juce::Colour::fromRGB(25, 26, 24));
+            graphics.drawText(mark.label,
+                              juce::Rectangle<float>(labelPos.x - 18.0f * scale,
+                                                     labelPos.y - 9.0f * scale,
+                                                     36.0f * scale,
+                                                     18.0f * scale),
+                              juce::Justification::centred);
+        }
+    }
 }
 
 juce::Colour levelColour(float normalized) noexcept
@@ -157,99 +204,95 @@ void MeterComponent::paint(juce::Graphics& graphics)
 {
     if (isLargeMeter)
     {
-        const auto bounds = getLocalBounds().toFloat().reduced(4.0f);
+        const auto bounds = getLocalBounds().toFloat().reduced(5.0f);
         const auto reductionDb = juce::jlimit(0.0f, meterRangeDb, gainReductionSource->load(std::memory_order_relaxed));
         const auto vuDb = outputLevelToVu(outputSource->load(std::memory_order_relaxed), meterMode);
         const auto isReductionMode = meterMode == MeterMode::GainReduction;
-        const auto scale = juce::jlimit(0.62f, 1.0f, std::min(bounds.getWidth() / 430.0f, bounds.getHeight() / 160.0f));
+        const auto scale = juce::jlimit(0.7f, 1.0f, std::min(bounds.getWidth() / 420.0f, bounds.getHeight() / 150.0f));
         const auto bezel = bounds.reduced(2.0f);
-        auto face = bezel.reduced(24.0f * scale, 18.0f * scale);
-        auto header = face.removeFromTop(23.0f * scale);
-        const auto readoutArea = face.removeFromBottom(22.0f * scale);
+        const auto facePlate = bezel.reduced(14.0f * scale, 12.0f * scale);
+        const auto glass = facePlate.reduced(5.0f * scale);
+        auto face = glass.reduced(18.0f * scale, 11.0f * scale);
+        auto header = face.removeFromTop(21.0f * scale);
+        auto readoutArea = face.removeFromBottom(23.0f * scale);
+        const auto scaleFace = face.reduced(3.0f * scale, 0.0f);
 
-        graphics.setColour(juce::Colour::fromRGB(7, 9, 10).withAlpha(0.24f));
-        graphics.fillRoundedRectangle(bounds.translated(0.0f, 5.0f * scale), 9.0f * scale);
+        graphics.setColour(juce::Colour::fromRGB(7, 9, 10).withAlpha(0.26f));
+        graphics.fillRoundedRectangle(bounds.translated(0.0f, 4.0f * scale), 11.0f * scale);
 
-        juce::ColourGradient bezelGradient(juce::Colour::fromRGB(32, 36, 39), bezel.getX(), bezel.getY(),
-                                           juce::Colour::fromRGB(11, 13, 15), bezel.getRight(), bezel.getBottom(), false);
+        juce::ColourGradient bezelGradient(juce::Colour::fromRGB(28, 32, 36), bezel.getX(), bezel.getY(),
+                                           juce::Colour::fromRGB(10, 12, 14), bezel.getRight(), bezel.getBottom(), false);
         graphics.setGradientFill(bezelGradient);
-        graphics.fillRoundedRectangle(bezel, 9.0f * scale);
-        graphics.setColour(juce::Colour::fromRGB(78, 88, 94));
-        graphics.drawRoundedRectangle(bezel, 9.0f * scale, 1.1f * scale);
+        graphics.fillRoundedRectangle(bezel, 10.0f * scale);
+        graphics.setColour(juce::Colour::fromRGB(96, 105, 109));
+        graphics.drawRoundedRectangle(bezel, 10.0f * scale, 1.1f * scale);
 
-        graphics.setColour(juce::Colour::fromRGB(12, 16, 18));
-        graphics.fillRoundedRectangle(face.expanded(0.0f, 4.0f * scale), 5.0f * scale);
-        graphics.setColour(juce::Colour::fromRGB(36, 44, 48).withAlpha(0.45f));
-        for (int line = 1; line < 6; ++line)
-        {
-            const auto x = face.getX() + face.getWidth() * static_cast<float>(line) / 6.0f;
-            graphics.drawVerticalLine(juce::roundToInt(x), face.getY(), face.getBottom());
-        }
-        graphics.setColour(juce::Colour::fromRGB(36, 44, 48).withAlpha(0.25f));
-        for (int line = 1; line < 3; ++line)
-        {
-            const auto y = face.getY() + face.getHeight() * static_cast<float>(line) / 3.0f;
-            graphics.drawHorizontalLine(juce::roundToInt(y), face.getX(), face.getRight());
-        }
+        graphics.setColour(juce::Colour::fromRGB(12, 14, 15));
+        graphics.fillRoundedRectangle(facePlate, 4.0f * scale);
+        graphics.setColour(juce::Colour::fromRGB(79, 88, 91));
+        graphics.drawRoundedRectangle(facePlate, 4.0f * scale, 1.0f * scale);
 
-        graphics.setFont(juce::FontOptions(11.0f * scale).withStyle("Bold"));
-        graphics.setColour(juce::Colour::fromRGB(221, 230, 227));
-        graphics.drawText(name.toUpperCase(), header.toNearestInt(), juce::Justification::centredLeft);
-        graphics.setColour(juce::Colour::fromRGB(237, 190, 72));
+        juce::ColourGradient glassGradient(juce::Colour::fromRGB(248, 241, 215), glass.getX(), glass.getY(),
+                                           juce::Colour::fromRGB(218, 204, 169), glass.getX(), glass.getBottom(), false);
+        graphics.setGradientFill(glassGradient);
+        graphics.fillRoundedRectangle(glass, 3.0f * scale);
+        graphics.setColour(juce::Colour::fromRGB(92, 83, 66));
+        graphics.drawRoundedRectangle(glass, 3.0f * scale, 1.0f * scale);
+
+        graphics.setColour(juce::Colour::fromRGB(255, 255, 255).withAlpha(0.18f));
+        graphics.fillRoundedRectangle(glass.withTrimmedBottom(glass.getHeight() * 0.62f).reduced(4.0f * scale), 2.0f * scale);
+
+        graphics.setFont(juce::FontOptions(10.5f * scale).withStyle("Bold"));
+        graphics.setColour(juce::Colour::fromRGB(31, 28, 24));
+        graphics.drawText(isReductionMode ? "VU" : name.toUpperCase(), header.toNearestInt(), juce::Justification::centredLeft);
+        graphics.setColour(juce::Colour::fromRGB(117, 35, 27));
         const auto modeText = isReductionMode ? "GAIN REDUCTION" : (meterMode == MeterMode::OutputPlus4 ? "+4 OUTPUT" : "+8 OUTPUT");
         graphics.drawText(modeText, header.toNearestInt(), juce::Justification::centredRight);
 
-        const auto needleProportion = isReductionMode ? reductionToProportion(reductionDb) : outputToProportion(vuDb);
-        const auto needleEnd = scalePointForProportion(face, needleProportion);
-        const auto pivot = juce::Point<float>(face.getCentreX(), face.getBottom() - 5.0f * scale);
+        drawMeterArc(graphics, scaleFace, 0.06f, 0.99f, juce::Colour::fromRGB(25, 26, 24), 1.0f, 1.2f * scale);
+        drawMeterArc(graphics, scaleFace, 0.06f, 0.99f, juce::Colour::fromRGB(25, 26, 24).withAlpha(0.34f), 0.82f, 0.8f * scale);
 
-        strokeMeterArc(graphics, face, 0.06f, 0.99f, juce::Colour::fromRGB(105, 119, 123).withAlpha(0.42f), 1.4f * scale);
         if (! isReductionMode)
-            strokeMeterArc(graphics, face, outputToProportion(0.0f), 0.99f, juce::Colour::fromRGB(242, 82, 55).withAlpha(0.86f), 2.0f * scale);
-
-        graphics.setFont(juce::FontOptions(9.4f * scale).withStyle("Bold"));
-        const auto drawMarks = [&graphics, face, scale, isReductionMode] (const auto& marks)
         {
-            for (const auto mark : marks)
-            {
-                const auto tickStart = scalePointForProportion(face, mark.proportion);
-                const auto tickDirection = tickDirectionForProportion(mark.proportion);
-                const auto tickHeight = (mark.major ? 19.0f : 11.0f) * scale;
-                const auto tickEnd = tickStart + tickDirection * tickHeight;
-                const auto hot = ! isReductionMode && mark.valueDb > 0.0f;
-
-                graphics.setColour(hot ? juce::Colour::fromRGB(242, 82, 55) : juce::Colour::fromRGB(215, 224, 221));
-                graphics.drawLine(tickStart.x, tickStart.y, tickEnd.x, tickEnd.y, (mark.major ? 1.6f : 0.9f) * scale);
-                if (mark.label[0] != '\0')
-                {
-                    const auto labelPoint = tickStart + tickDirection * (tickHeight + 7.0f * scale);
-                    graphics.drawText(mark.label, juce::Rectangle<float>(labelPoint.x - 17.0f * scale, labelPoint.y - 7.5f * scale,
-                                                                          34.0f * scale, 15.0f * scale),
-                                      juce::Justification::centred);
-                }
-            }
-        };
+            drawMeterArc(graphics, scaleFace, outputToProportion(0.0f), outputToProportion(vuMaximumDb),
+                         juce::Colour::fromRGB(174, 38, 28), 1.04f, 2.8f * scale);
+        }
 
         if (isReductionMode)
-            drawMarks(reductionMarks);
+            drawMeterTicks(graphics, scaleFace, reductionMarks, true, scale);
         else
-            drawMarks(outputMarks);
+            drawMeterTicks(graphics, scaleFace, outputMarks, false, scale);
 
-        auto needleDirection = needleEnd - pivot;
+        graphics.setColour(juce::Colour::fromRGB(35, 31, 27));
+        graphics.setFont(juce::FontOptions(8.8f * scale).withStyle("Bold"));
+        graphics.drawText(isReductionMode ? "DB" : "VU",
+                          juce::Rectangle<float>(scaleFace.getCentreX() - 18.0f * scale,
+                                                 scaleFace.getY() + scaleFace.getHeight() * 0.56f,
+                                                 36.0f * scale,
+                                                 14.0f * scale).toNearestInt(),
+                          juce::Justification::centred);
+
+        const auto valueForNeedle = isReductionMode ? reductionDb : vuDb;
+        const auto needleProportion = isReductionMode ? reductionToProportion(valueForNeedle) : outputToProportion(valueForNeedle);
+        const auto needle = arcPointForProportion(scaleFace, needleProportion, 0.84f);
+        const auto pivot = meterPivotForFace(scaleFace);
+        auto needleDirection = needle - pivot;
         const auto needleLength = std::sqrt(needleDirection.x * needleDirection.x + needleDirection.y * needleDirection.y);
         needleDirection = needleLength > 0.0f ? needleDirection / needleLength : juce::Point<float>(0.0f, -1.0f);
-        const auto needleBase = pivot - needleDirection * (9.0f * scale);
-        graphics.setColour(juce::Colour::fromRGB(0, 0, 0).withAlpha(0.34f));
-        graphics.drawLine(needleBase.x + 1.5f * scale, needleBase.y + 2.0f * scale, needleEnd.x + 1.5f * scale, needleEnd.y + 2.0f * scale, 3.2f * scale);
-        graphics.setColour(juce::Colour::fromRGB(237, 190, 72));
-        graphics.drawLine(needleBase.x, needleBase.y, needleEnd.x, needleEnd.y, 2.2f * scale);
-        graphics.setColour(juce::Colour::fromRGB(242, 102, 53));
-        graphics.fillEllipse(juce::Rectangle<float>(11.0f * scale, 11.0f * scale).withCentre(pivot));
+        const auto needleBase = pivot - needleDirection * (7.0f * scale);
+        graphics.setColour(juce::Colour::fromRGB(0, 0, 0).withAlpha(0.20f));
+        graphics.drawLine(needleBase.x + 1.0f * scale, needleBase.y + 1.5f * scale, needle.x + 1.0f * scale, needle.y + 1.5f * scale, 2.5f * scale);
+        graphics.setColour(juce::Colour::fromRGB(22, 21, 19));
+        graphics.drawLine(needleBase.x, needleBase.y, needle.x, needle.y, 1.8f * scale);
+        graphics.setColour(juce::Colour::fromRGB(44, 39, 32));
+        graphics.fillEllipse(juce::Rectangle<float>(17.0f * scale, 17.0f * scale).withCentre(pivot));
+        graphics.setColour(juce::Colour::fromRGB(178, 163, 124));
+        graphics.fillEllipse(juce::Rectangle<float>(7.0f * scale, 7.0f * scale).withCentre(pivot));
 
         const auto numericValue = isReductionMode ? reductionDb : vuDb;
-        const auto valueText = (isReductionMode ? juce::String(numericValue, 1) + " dB GR" : juce::String(numericValue, 1) + " VU");
-        graphics.setColour(juce::Colour::fromRGB(71, 211, 157));
-        graphics.setFont(juce::FontOptions(12.0f * scale).withStyle("Bold"));
+        const auto valueText = isReductionMode ? juce::String(numericValue, 1) + " dB GR" : juce::String(numericValue, 1) + " VU";
+        graphics.setColour(juce::Colour::fromRGB(31, 28, 24));
+        graphics.setFont(juce::FontOptions(11.4f * scale).withStyle("Bold"));
         graphics.drawText(valueText, readoutArea.toNearestInt(), juce::Justification::centred);
         return;
     }
@@ -275,7 +318,7 @@ void MeterComponent::paint(juce::Graphics& graphics)
     graphics.setColour(levelColour(normalized));
     graphics.fillRoundedRectangle(fill, 2.0f * scale);
 
-    graphics.setColour(juce::Colours::white.withAlpha(0.08f));
+    graphics.setColour(juce::Colour::fromRGB(71, 211, 157).withAlpha(0.12f));
     graphics.fillRect(well.withTrimmedRight(well.getWidth() * 0.52f));
     graphics.setColour(juce::Colour::fromRGB(34, 39, 43));
     graphics.setFont(juce::FontOptions(9.2f * scale).withStyle("Bold"));
